@@ -125,6 +125,9 @@ class CoopPushEnv(ParallelEnv):
         render_mode: str | None = None,
     ):
         super().__init__()
+        env = cooppush_cpp.Environment()
+        env.init([0.0, 1.0], [1.0, 2.0], [2.0, 3.0])
+        print(env)
         self.n_particles = n_particles
         self.continuous_actions = continuous_actions
         self.render_mode = render_mode
