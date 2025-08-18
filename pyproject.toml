@@ -1,7 +1,7 @@
 # pyproject.toml
 
 [build-system]
-requires = ["hatchling", "hatch-vcs", "pybind11"]
+requires = ["hatchling", "hatch-vcs", "pybind11", "setuptools"]
 build-backend = "hatchling.build"
 
 [project]
