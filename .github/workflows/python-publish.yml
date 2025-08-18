@@ -16,12 +16,12 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4 # It's good practice to update this too
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.12.0
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4 # <-- FIX HERE
         with:
           path: ./wheelhouse/*.whl
 
@@ -29,7 +29,7 @@ jobs:
     needs: [build_wheels]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4 # <-- FIX HERE
         with:
           name: artifact
           path: dist
