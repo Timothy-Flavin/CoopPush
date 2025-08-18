@@ -16,14 +16,3 @@ ext_modules = [
         ),
     ),
 ]
-
-# The setup() call now includes the missing Name and Version
-setup(
-    name="cooppush",
-    version="0.1.25",  # Use the same version as in your pyproject.toml
-    # These lines correctly find your Python source code
-    packages=find_packages(where="src"),
-    package_dir={"": "src"},
-    # This line builds the C++ extension
-    ext_modules=ext_modules,
-)

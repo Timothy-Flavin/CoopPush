@@ -1,21 +1,18 @@
 # pyproject.toml
 
 [build-system]
-# We now require setuptools and pybind11 for the build
-requires = ["setuptools>=80", "pybind11"]
-# The build backend is now setuptools
+requires = ["setuptools>=61", "pybind11"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "cooppush"
-# Set the version directly or use setuptools-scm for dynamic versioning
-version = "0.1.25" 
+version = "0.1.24"
 authors = [
   { name="Timothy Flavin", email="timothy.c.flavin@gmail.com" },
 ]
 description = "MPE inspired push environment with tunable inter-action dependence for coop MARL"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.7"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
@@ -26,7 +23,8 @@ classifiers = [
 "Homepage" = "https://github.com/Timothy-Flavin/CoopPush/"
 "Bug Tracker" = "https://github.com/Timothy-Flavin/CoopPush/issues"
 
-# All [tool.hatch] sections are now removed.
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.cibuildwheel]
 build = "cp3*-*"
