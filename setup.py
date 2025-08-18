@@ -7,25 +7,23 @@ import pybind11
 # Define the C++ extension module
 ext_modules = [
     Extension(
-        # The name of the extension, including the package path
         "cooppush.cooppush_cpp",
-        # A list of C++ source files
         ["cpp_src/backend.cpp"],
-        # Include directories for header files
         include_dirs=[pybind11.get_include()],
         language="c++",
-        # Platform-specific compiler arguments
         extra_compile_args=(
             ["-std=c++11"] if sys.platform != "win32" else ["/std:c++14"]
         ),
     ),
 ]
 
-# The main setup call
+# The setup() call now includes the missing Name and Version
 setup(
-    # These two lines are crucial for finding your Python source code in the 'src' dir
+    name="cooppush",
+    version="0.1.25",  # Use the same version as in your pyproject.toml
+    # These lines correctly find your Python source code
     packages=find_packages(where="src"),
     package_dir={"": "src"},
-    # This tells setuptools to build the C++ extension we defined above
+    # This line builds the C++ extension
     ext_modules=ext_modules,
 )
