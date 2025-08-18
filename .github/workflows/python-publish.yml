@@ -1,11 +1,10 @@
-# .github/workflows/publish.yml
-
 name: Build and publish to PyPI
 
 on:
   push:
     tags:
-      - 'v*' # Trigger on version tags like v0.1.0
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build_wheels:
@@ -13,29 +12,38 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # No python-version matrix needed here!
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.16.4
+        uses: pypa/cibuildwheel@v2.19.1
 
-      - uses: actions/upload-artifact@v4
+      - name: Store the wheels
+        uses: actions/upload-artifact@v4
         with:
+          name: wheels-${{ matrix.os }}
           path: ./wheelhouse/*.whl
 
   upload_pypi:
+    name: Upload to PyPI
     needs: [build_wheels]
     runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cooppush # Replace 'cooppush' with your actual PyPI project name
+    permissions:
+      id-token: write # This is required for trusted publishing
+
     steps:
-      - uses: actions/download-artifact@v4 # <-- FIX HERE
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
         with:
-          name: artifact
-          path: dist
+          path: dist/
+          pattern: wheels-*
+          merge-multiple: true
 
       - name: Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
+        uses: pypa/gh-action-pypi-publish@v1.9.0
