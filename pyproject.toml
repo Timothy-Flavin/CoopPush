@@ -28,9 +28,12 @@ source = "vcs" # Use hatch-vcs to get version from git tags
 [tool.hatch.build.targets.wheel]
 # This is the key section that replaces setup.py
 # It tells hatchling to include the compiled C++ module in the wheel
-packages = ["cooppush"]
-files = ["cooppush/**"]
-
+#packages = ["cooppush"]
+packages = ["src/cooppush"]
+force_include = {
+    "src/cooppush/*.so" = "cooppush",  # For Linux and macOS
+    "src/cooppush/*.pyd" = "cooppush"  # For Windows
+}
 [tool.hatch.build.hooks.custom]
 # This defines a custom build script to run before building the wheel
 path = "hatch_build.py"
