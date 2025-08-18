@@ -1,40 +1,105 @@
-name: Build and Publish to PyPI
+name: Build and publish to PyPI
 
 on:
-  workflow_dispatch: # Allows you to trigger the run manually from the Actions tab
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
-  build_and_publish:
-    name: Build and publish on ${{ matrix.os }}
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clean up old build artifacts
+        shell: bash
+        run: rm -rf my_push_env/ build/ dist/ *.egg-info
+      
+      - name: 1. Show Project Structure
+        run: ls -R
+        shell: bash
+
+      - name: 2. Show pyproject.toml content
+        run: cat pyproject.toml
+        shell: bash
+
+      - name: 3. Show setup.py content
+        run: cat setup.py
+        shell: bash
+
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.19.1
+        env:
+          CIBW_BUILD_VERBOSITY: 1
+      - name: 3.5. Show Project Structure
+        run: ls -R
+        shell: bash
+
+      - name: 4. Inspect the Built Wheel
+        # This step runs even if the build fails, so we can see the broken wheel
+        if: always()
+        shell: bash
+        run: |
+          echo "--- Wheels created in wheelhouse/ ---"
+          ls -l wheelhouse/
+          
+          # Check if any wheel was created
+          if [ -z "$(ls -A wheelhouse/*.whl)" ]; then
+            echo "No wheel was created."
+            exit 0
+          fi
+          
+          echo "--- Unzipping the first wheel found ---"
+          # Find the first .whl file and unzip it to a new directory
+          WHEEL_FILE=$(find wheelhouse -name "*.whl" | head -n 1)
+          unzip "$WHEEL_FILE" -d unzipped_wheel/
+          
+          echo "--- Contents of the unzipped wheel ---"
+          ls -R unzipped_wheel/
+          
+          echo "--- Contents of the METADATA file ---"
+          # Find the METADATA file inside the unzipped contents and print it
+          # This will show us exactly what metadata is (or is not) present
+          cat unzipped_wheel/*dist-info/METADATA
+
+      - name: Store the wheels
+        uses: actions/upload-artifact@v4
+        with:
+          # Add the unique github.run_id to the artifact name
+          name: wheels-${{ matrix.os }}-${{ github.run_id }}
+          path: ./wheelhouse/*.whl
+
+  upload_pypi:
+    name: Upload to PyPI
+    needs: [build_wheels]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cooppush # Replace 'cooppush' with your actual PyPI project name
     permissions:
-      id-token: write # Required for trusted publishing
+      id-token: write # This is required for trusted publishing
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Clean download directory
+        run: rm -rf dist/
 
-    # --- ADD THIS NEW STEP ---
-    - name: Install build dependencies
-      run: pip install build
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          # Use a glob and the unique github.run_id to find the new artifacts
+          pattern: wheels-*-${{ github.run_id }}
+          merge-multiple: true
 
-    - name: Build sdist (source distribution)
-      run: python -m build --sdist
-
-    - name: Build wheels
-      uses: pypa/cibuildwheel@v2.19.1
-      env:
-        # Tell cibuildwheel to put all built wheels in the 'dist' folder
-        CIBW_OUTPUT_DIR: dist
-
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@v1.9.0
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.12.4
