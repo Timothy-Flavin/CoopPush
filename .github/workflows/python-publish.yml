@@ -9,7 +9,12 @@ on:
 jobs:
   build_and_publish:
     name: Build and publish on ${{ matrix.os }}
+    # 'runs-on' and 'strategy' must be at the same indentation level
     runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
     permissions:
       id-token: write # Required for trusted publishing
 
@@ -17,7 +22,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0 # Fetches all history for versioning
+        fetch-depth: 0
 
     - name: Build sdist (source distribution)
       run: python -m build --sdist
@@ -27,9 +32,6 @@ jobs:
       env:
         # Tell cibuildwheel to put all built wheels in the 'dist' folder
         CIBW_OUTPUT_DIR: dist
-
-    - name: Check the contents of dist/
-      run: ls -R dist
 
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@v1.9.0
