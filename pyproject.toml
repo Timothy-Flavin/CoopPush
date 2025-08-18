@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cooppush"
 # Set the version directly or use setuptools-scm for dynamic versioning
-version = "0.1.24" 
+version = "0.1.25" 
 authors = [
   { name="Timothy Flavin", email="timothy.c.flavin@gmail.com" },
 ]
