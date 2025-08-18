@@ -1,3 +1,4 @@
+# hatch_build.py
 import os
 import sys
 from pathlib import Path
@@ -7,14 +8,13 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 class CustomBuildHook(BuildHookInterface):
     def initialize(self, version, build_data):
-        """
-        This method is called before the build process starts.
-        This is where we compile the C++ extension.
-        """
         from setuptools import Extension
-        from setuptools.command.build_ext import build_ext
+        from setuptools.command.build_ext import build_ext as _build_ext
+        from distutils.dist import Distribution
 
-        # Define the extension module, just like in setup.py
+        # --- Signal to Hatchling that this is NOT a pure Python wheel ---
+        build_data["pure_python"] = False
+
         ext_modules = [
             Extension(
                 "cooppush.cooppush_cpp",
@@ -27,19 +27,22 @@ class CustomBuildHook(BuildHookInterface):
             )
         ]
 
-        # A small distribution object to run the build_ext command
-        from distutils.dist import Distribution
-
         dist = Distribution({"name": "cooppush", "ext_modules": ext_modules})
-
-        # Create a build_ext command and configure it
-        cmd = build_ext(dist)
+        cmd = _build_ext(dist)
         cmd.ensure_finalized()
 
-        # The output directory for the compiled file
-        build_lib = Path(self.root) / "src"
-        cmd.build_lib = str(build_lib.resolve())
+        # --- CORRECTED LINE ---
+        # Build into the 'src' directory, and setuptools will create 'src/cooppush'
+        build_path = Path(self.root) / "src"
+        cmd.build_lib = str(build_path.resolve())
 
         print("--- Compiling C++ extension ---")
         cmd.run()
         print("--- Compilation finished ---")
+
+        # --- Inform Hatchling about the created artifacts ---
+        # This allows you to remove the 'force_include' from pyproject.toml
+        # It finds the compiled file inside 'src/cooppush/'
+        artifacts_path = build_path / "cooppush"
+        build_data["artifacts"] = [str(p) for p in artifacts_path.glob("cooppush_cpp*")]
+        print(f"build artifacts: {build_data['artifacts']}")
