@@ -17,6 +17,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clean up old build artifacts
+        run: rm -rf build dist *.egg-info
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.19.1
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.19.1
