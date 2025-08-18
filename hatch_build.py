@@ -1,5 +1,4 @@
 # hatch_build.py
-import os
 import sys
 from pathlib import Path
 import pybind11
@@ -12,7 +11,7 @@ class CustomBuildHook(BuildHookInterface):
         from setuptools.command.build_ext import build_ext as _build_ext
         from distutils.dist import Distribution
 
-        # --- Signal to Hatchling that this is NOT a pure Python wheel ---
+        # --- Signal that this is NOT a pure Python wheel ---
         build_data["pure_python"] = False
 
         ext_modules = [
@@ -31,7 +30,6 @@ class CustomBuildHook(BuildHookInterface):
         cmd = _build_ext(dist)
         cmd.ensure_finalized()
 
-        # --- CORRECTED LINE ---
         # Build into the 'src' directory, and setuptools will create 'src/cooppush'
         build_path = Path(self.root) / "src"
         cmd.build_lib = str(build_path.resolve())
@@ -40,9 +38,15 @@ class CustomBuildHook(BuildHookInterface):
         cmd.run()
         print("--- Compilation finished ---")
 
-        # --- Inform Hatchling about the created artifacts ---
-        # This allows you to remove the 'force_include' from pyproject.toml
-        # It finds the compiled file inside 'src/cooppush/'
+        # --- NEW: Use force_include for a more robust approach ---
+        # This explicitly maps the compiled file to its destination in the wheel.
+        build_data["force_include"] = {}
         artifacts_path = build_path / "cooppush"
-        build_data["artifacts"] = [str(p) for p in artifacts_path.glob("cooppush_cpp*")]
-        print(f"build artifacts: {build_data['artifacts']}")
+
+        for p in artifacts_path.glob("cooppush_cpp*"):
+            # The key is the full path to the source file we just built.
+            source = str(p)
+            # The value is the destination path inside the wheel's 'cooppush' package.
+            destination = str(Path("cooppush") / p.name)
+            print(f"--- Mapping artifact: {source} -> {destination} ---")
+            build_data["force_include"][source] = destination
