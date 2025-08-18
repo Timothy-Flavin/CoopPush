@@ -37,7 +37,7 @@ class CustomBuildHook(BuildHookInterface):
         cmd.ensure_finalized()
 
         # The output directory for the compiled file
-        build_lib = Path(self.root) / "cooppush"
+        build_lib = Path(self.root) / "src"
         cmd.build_lib = str(build_lib.resolve())
 
         print("--- Compiling C++ extension ---")
