@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cooppush"
-version = "1.0.0"
+version = "1.0.1"
 authors = [
   { name="Timothy Flavin", email="timothy.c.flavin@gmail.com" },
 ]
@@ -28,3 +28,10 @@ where = ["src"]
 
 [tool.setuptools.ext_modules]
 cooppush_cpp = { sources = ["cpp_src/backend.cpp"], language = "c++" }
+
+[tool.cibuildwheel]
+build = "cp3*-*"
+skip = ""
+
+[tool.cibuildwheel.windows]
+build = "cp3*-win_amd64"
