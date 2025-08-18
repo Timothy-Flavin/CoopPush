@@ -90,6 +90,9 @@ jobs:
       id-token: write # This is required for trusted publishing
 
     steps:
+      - name: Clean download directory
+        run: rm -rf dist/
+
       - name: Download all wheels
         uses: actions/download-artifact@v4
         with:
