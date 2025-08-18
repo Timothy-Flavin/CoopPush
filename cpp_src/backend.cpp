@@ -153,7 +153,7 @@ private:
 // --- PYBIND11 MODULE DEFINITION ---
 // The first argument is the name of the module (e.g., import cooppush_cpp)
 // The second argument, 'm', is a variable of type py::module_ which is the main interface
-PYBIND11_MODULE(cpp_backend, m)
+PYBIND11_MODULE(cooppush_cpp, m)
 {
     m.doc() = "Pybind11 backend for the Cooperative Push PettingZoo environment";
 

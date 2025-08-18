@@ -5,7 +5,7 @@ from gymnasium.spaces import Box
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import wrappers
 from pettingzoo.utils.env import ActionType, AgentID, ObsType
-from cooppush import cooppush_cpp
+import cooppush_cpp
 
 
 # =============================================================================
@@ -315,3 +315,7 @@ if __name__ == "__main__":
             observations, infos = env.reset()
 
     env.close()
+
+    env = cooppush_cpp.Environment()
+    env.init([0.0, 1.0], [1.0, 2.0], [2.0, 3.0])
+    print(env)

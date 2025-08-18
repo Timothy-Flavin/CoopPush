@@ -17,7 +17,7 @@ class CustomBuildHook(BuildHookInterface):
         # Define the extension module, just like in setup.py
         ext_modules = [
             Extension(
-                "cooppush.cpp_backend",
+                "cooppush.cooppush_cpp",
                 ["cpp_src/backend.cpp"],
                 include_dirs=[pybind11.get_include()],
                 language="c++",
