@@ -6,7 +6,8 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 
 class CustomBuildHook(BuildHookInterface):
-    def initialize(self, version, build_data):
+    # The 'finalize' hook runs at the correct time: right before the wheel is built.
+    def finalize(self, version, build_data, artifact_path):
         from setuptools import Extension
         from setuptools.command.build_ext import build_ext as _build_ext
         from distutils.dist import Distribution
@@ -30,23 +31,19 @@ class CustomBuildHook(BuildHookInterface):
         cmd = _build_ext(dist)
         cmd.ensure_finalized()
 
-        # Build into the 'src' directory, and setuptools will create 'src/cooppush'
         build_path = Path(self.root) / "src"
         cmd.build_lib = str(build_path.resolve())
 
-        print("--- Compiling C++ extension ---")
+        print("--- [finalize] Compiling C++ extension ---")
         cmd.run()
-        print("--- Compilation finished ---")
+        print("--- [finalize] Compilation finished ---")
 
-        # --- NEW: Use force_include for a more robust approach ---
-        # This explicitly maps the compiled file to its destination in the wheel.
+        # --- Use force_include to explicitly map the compiled file ---
         build_data["force_include"] = {}
         artifacts_path = build_path / "cooppush"
 
         for p in artifacts_path.glob("cooppush_cpp*"):
-            # The key is the full path to the source file we just built.
             source = str(p)
-            # The value is the destination path inside the wheel's 'cooppush' package.
             destination = str(Path("cooppush") / p.name)
-            print(f"--- Mapping artifact: {source} -> {destination} ---")
+            print(f"--- [finalize] Mapping artifact: {source} -> {destination} ---")
             build_data["force_include"][source] = destination
