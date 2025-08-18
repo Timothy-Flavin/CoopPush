@@ -44,7 +44,7 @@ jobs:
       - name: 3.5. Show Project Structure
         run: ls -R
         shell: bash
-        
+
       - name: 4. Inspect the Built Wheel
         # This step runs even if the build fails, so we can see the broken wheel
         if: always()
@@ -75,7 +75,8 @@ jobs:
       - name: Store the wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}
+          # Add the unique github.run_id to the artifact name
+          name: wheels-${{ matrix.os }}-${{ github.run_id }}
           path: ./wheelhouse/*.whl
 
   upload_pypi:
@@ -93,7 +94,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist/
-          pattern: wheels-*
+          # Use a glob and the unique github.run_id to find the new artifacts
+          pattern: wheels-*-${{ github.run_id }}
           merge-multiple: true
 
       - name: Publish package to PyPI
