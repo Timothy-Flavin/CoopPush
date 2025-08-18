@@ -5,3 +5,4 @@ test_venv
 build
 *.pyd
 cooppush
+src/cooppush.egg-info
