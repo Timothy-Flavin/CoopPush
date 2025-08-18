@@ -29,9 +29,10 @@ source = "vcs" # Use hatch-vcs to get version from git tags
 packages = ["src/cooppush"]
 
 # This static rule tells Hatchling to find the compiled file during the final build.
-[tool.hatch.build.targets.wheel.force_include]
-"src/cooppush/*.so" = "cooppush"
-"src/cooppush/*.pyd" = "cooppush"
+artifacts = [
+    "src/cooppush/*.so",
+    "src/cooppush/*.pyd"
+]
 
 [tool.hatch.build.hooks.custom]
 # This defines a custom build script to run before building the wheel
