@@ -2,6 +2,7 @@ import gymnasium
 import numpy as np
 import json
 from gymnasium.spaces import Box
+import pygame
 
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import wrappers
@@ -41,14 +42,31 @@ class CoopPushEnv(ParallelEnv):
             env_setup["particle_pos"],
             env_setup["boulder_pos"],
             env_setup["landmark_pos"],
+            5,
         )
         print(env)
         self.env = env
         self.n_particles = len(env_setup["particle_pos"]) // 2
         self.n_boulders = len(env_setup["boulder_pos"]) // 2
         self.n_landmarks = len(env_setup["landmark_pos"]) // 2
+        self.particle_radius = 1
+        self.landmark_radius = 1
+        self.boulder_radius = 5
 
         self.render_mode = render_mode
+        # Persistent variables for rendering
+        self.screen = None
+        self.screen_width = 800
+        self.screen_height = 600
+        self.clock = None
+
+        if self.render_mode == "human":
+            pygame.init()
+            self.screen = pygame.display.set_mode(
+                (self.screen_width, self.screen_height)
+            )
+            pygame.display.set_caption("Particle Simulation")
+            self.clock = pygame.time.Clock()
 
         # --- PettingZoo API Requirements ---
         self.agents = [f"particle_{i}" for i in range(self.n_particles)]
@@ -70,22 +88,19 @@ class CoopPushEnv(ParallelEnv):
         if self.continuous_actions:
             # Each agent has a 2D action: (dx, dy)
             self.action_spaces = {
-                agent: Box(
-                    low=-1, high=1, shape=(self.n_particles * 2,), dtype=np.float32
-                )
+                agent: Box(low=-1, high=1, shape=(2,), dtype=np.float32)
                 for agent in self.possible_agents
             }
         else:
             # 0: no-op, 1: right, 2: left, 3: up, 4: down
             self.action_spaces = {
-                agent: gymnasium.spaces.Discrete(self.n_particles * 2)
-                for agent in self.possible_agents
+                agent: gymnasium.spaces.Discrete(8) for agent in self.possible_agents
             }
 
         # --- State Caching for Rendering ---
         # This variable will hold the full state returned by the C++ backend
         # so the `render` function can use it without making another C++ call.
-        self.cached_state = None
+        self.cached_state = np.zeros(100)
 
     # Note: PettingZoo uses @functools.lru_cache(maxsize=None) for these properties
     def observation_space(self, agent: AgentID) -> gymnasium.spaces.Space:
@@ -102,7 +117,7 @@ class CoopPushEnv(ParallelEnv):
         initial_state, initial_obs = self.env.reset()
 
         # --- Cache the state for rendering ---
-        self.cached_state = initial_state
+        self.cached_state = initial_obs["particle_0"]
 
         # Reset the list of active agents
         self.agents = self.possible_agents[:]
@@ -129,32 +144,18 @@ class CoopPushEnv(ParallelEnv):
         3. Caches the new state for rendering.
         4. Returns results in PettingZoo format.
         """
-        # --- 1. Format actions for the backend ---
-        # The backend expects a single, ordered NumPy array.
-        # We must ensure actions are in the correct agent order.
-        ordered_actions = []
-        for agent in self.possible_agents:
-            if agent in self.agents:
-                ordered_actions.append(actions[agent])
-            else:  # If an agent is done, provide a default action (e.g., no-op)
-                if self.continuous_actions:
-                    ordered_actions.append(np.zeros(2, dtype=np.float32))
-                else:
-                    ordered_actions.append(0)
-
-        action_array = np.array(ordered_actions)
 
         # --- 2. Call the backend ---
-        new_state, obs, rewards, terminations, truncations = self.env.step(action_array)
-
+        new_state, obs, rewards, terminations, truncations = self.env.step(actions)
+        if rewards["particle_0"] > 0:
+            print(rewards)
         # --- 3. Cache the new state ---
-        self.cached_state = new_state
+        self.cached_state = np.copy(obs["particle_0"])
 
         # --- 4. Format results for PettingZoo ---
         # Handle agent termination
         for agent in self.agents:
             if terminations[agent] or truncations[agent]:
-                # This agent is now done
                 pass
 
         # If all agents are done, clear the agents list for the next reset
@@ -175,34 +176,109 @@ class CoopPushEnv(ParallelEnv):
 
         return obs, rewards, terminations, truncations, infos
 
+    def scale_to_screen(self, x, y):
+        x = (x - self.min_x) / self.x_range * self.screen_width
+        y = (y - self.min_y) / self.y_range * self.screen_height
+        return (int(x), int(y))
+
+    def scale_screen(self):
+        self.min_x = self.cached_state[0]
+        self.max_x = self.cached_state[0]
+        self.min_y = self.cached_state[1]
+        self.max_y = self.cached_state[1]
+        for i in range(self.cached_state.shape[0]):
+            if i % 2 == 0:
+                if self.cached_state[i] < self.min_x:
+                    self.min_x = self.cached_state[i]
+                if self.cached_state[i] > self.max_x:
+                    self.max_x = self.cached_state[i]
+            else:
+                if self.cached_state[i] < self.min_y:
+                    self.min_y = self.cached_state[i]
+                if self.cached_state[i] > self.max_y:
+                    self.max_y = self.cached_state[i]
+        self.min_x = self.min_x - 10.0
+        self.min_y = self.min_y - 10.0
+        self.max_x = self.max_x + 10.0
+        self.max_y = self.max_y + 10.0
+        self.x_range = self.max_x - self.min_x
+        self.y_range = self.max_y - self.min_y
+
+        if self.x_range / self.screen_width > self.y_range / self.screen_height:
+            avg_y = (self.min_y + self.max_y) / 2
+            self.scale = self.x_range / self.screen_width
+            self.min_y = avg_y - self.scale * self.screen_height / 2
+            self.max_y = avg_y + self.scale * self.screen_height / 2
+            self.y_range = self.max_y - self.min_y
+        else:
+            avg_x = (self.min_x + self.max_x) / 2
+            self.scale = self.y_range / self.screen_height
+            self.min_x = avg_x - self.scale * self.screen_width / 2
+            self.max_x = avg_x + self.scale * self.screen_width / 2
+            self.x_range = self.max_x - self.min_x
+
     def render(self) -> None | str:
         """
-        Renders the environment using the cached state.
-        This method DOES NOT call the C++ backend.
+        Renders the environment to the screen using Pygame.
+
+        This function assumes self.state is a flattened array of positions:
+        [p1_x, p1_y, p2_x, p2_y, ..., b1_x, b1_y, ..., l1_x, l1_y, ...]
         """
-        if self.render_mode is None:
-            gymnasium.logger.warn(
-                "You are calling render method without specifying any render mode."
-            )
+        if self.render_mode != "human":
+            # Do nothing if not in human rendering mode
             return
+        assert self.screen is not None, "cant render to no screen"
+        assert self.clock is not None, "cant tick nonexistent clock"
+        # Colors for different objects (in RGB format)
+        PARTICLE_COLOR = (255, 0, 0)  # Red
+        BOULDER_COLOR = (128, 128, 128)  # Gray
+        LANDMARK_COLOR = (0, 0, 255)  # Blue
+        BACKGROUND_COLOR = (0, 0, 0)  # Black
 
-        if self.cached_state is None:
-            print("Cannot render, state is not initialized. Call reset() first.")
-            return
+        self.scale_screen()
+        # Clear the screen with the background color
+        self.screen.fill(BACKGROUND_COLOR)
 
-        if self.render_mode in ["human", "ansi"]:
-            # Simple text-based rendering
-            print("-" * 20)
-            print(
-                f"Current State (Timestep {self.env.state is not None and len(self.agents)})"
-            )
-            for i in range(self.n_particles):
-                x = self.cached_state[i * 2]
-                y = self.cached_state[i * 2 + 1]
-                print(f"  Particle {i}: (x={x:.3f}, y={y:.3f})")
-            print("-" * 20)
-            if self.render_mode == "ansi":
-                return "Rendering output as a string would go here."
+        # Draw particles
+        for i in range(self.n_particles):
+            # Calculate the index for the particle's x and y coordinates
+            x_idx = i * 4
+            y_idx = i * 4 + 1
+            x = self.cached_state[x_idx]
+            y = self.cached_state[y_idx]
+            center = self.scale_to_screen(x, y)
+            radius = int(self.particle_radius / self.scale)
+            pygame.draw.circle(self.screen, PARTICLE_COLOR, center, radius)
+
+        # Draw boulders
+        for i in range(self.n_boulders):
+            # Calculate the index for the boulder's x and y coordinates
+            offset = self.n_particles * 4
+            x_idx = offset + i * 2
+            y_idx = offset + i * 2 + 1
+            x = self.cached_state[x_idx]
+            y = self.cached_state[y_idx]
+            center = self.scale_to_screen(x, y)
+            radius = int(self.boulder_radius / self.scale)
+            pygame.draw.circle(self.screen, BOULDER_COLOR, center, radius)
+
+        # Draw landmarks
+        for i in range(self.n_landmarks):
+            # Calculate the index for the landmark's x and y coordinates
+            offset = self.n_particles * 4 + self.n_boulders * 2
+            x_idx = offset + i * 2
+            y_idx = offset + i * 2 + 1
+            x = self.cached_state[x_idx]
+            y = self.cached_state[y_idx]
+            center = self.scale_to_screen(x, y)
+            radius = int(self.landmark_radius / self.scale)
+            pygame.draw.circle(self.screen, LANDMARK_COLOR, center, radius)
+
+        # Update the display to show the changes
+        pygame.display.flip()
+
+        # Control the frame rate
+        self.clock.tick(10)
 
     def close(self):
         """Called to clean up resources."""
@@ -217,16 +293,16 @@ if __name__ == "__main__":
 
     # --- VERIFY THE ENVIRONMENT WITH THE OFFICIAL PETTINGZOO TEST ---
     print("Running PettingZoo API Test...")
-    env = CoopPushEnv(n_particles=3, continuous_actions=True)
+    env = CoopPushEnv()
     parallel_api_test(env, num_cycles=1000)
     print("API Test Passed!")
 
     # --- EXAMPLE USAGE ---
     print("\n--- Running Example Usage ---")
-    env = CoopPushEnv(n_particles=2, continuous_actions=True, render_mode="human")
+    env = CoopPushEnv(render_mode="human")
     observations, infos = env.reset()
 
-    for step in range(5):
+    for step in range(256):
         # Get random actions for each agent
         actions = {agent: env.action_space(agent).sample() for agent in env.agents}
 
@@ -234,13 +310,13 @@ if __name__ == "__main__":
         print(f"Actions: {actions}")
 
         observations, rewards, terminations, truncations, infos = env.step(actions)
-
+        env.render()
         if not env.agents:
             print("All agents are done. Resetting.")
             observations, infos = env.reset()
 
     env.close()
 
-    env = cooppush_cpp.Environment()
-    env.init([0.0, 1.0], [1.0, 2.0], [2.0, 3.0])
-    print(env)
+    # env = cooppush_cpp.Environment()
+    # env.init([0.0, 1.0], [1.0, 2.0], [2.0, 3.0])
+    # print(env)

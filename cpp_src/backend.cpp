@@ -74,6 +74,7 @@ private:
     int n_particles = 1;
     int n_boulders = 1;
     int n_lm = 1; // While this is more than zero the env stays on
+    int n_physics_steps_ = 5;
 
     const double LANDMARK_R = 1.0;
     const double BOULDER_R = 5.0;
@@ -95,9 +96,11 @@ public:
     void init(
         std::vector<double> particle_positions,
         std::vector<double> boulder_positions,
-        std::vector<double> landmark_positions)
+        std::vector<double> landmark_positions,
+        int n_physics_steps = 5)
     {
         std::cout << "C++ init() called." << std::endl;
+        n_physics_steps_ = n_physics_steps;
         // Store the initial state so we can reset to it later
         initial_particle_positions_ = particle_positions;
         initial_boulder_positions_ = boulder_positions;
@@ -163,7 +166,8 @@ public:
             auto buf = action_array.request();
             double *ptr = static_cast<double *>(buf.ptr);
 
-            // Example: "particle_0" -> index 0
+            // std::cout << agent_id << " before: " << ptr[0] << ", " << ptr[1] << " after: ";
+            //  Example: "particle_0" -> index 0
             int particle_index = std::stoi(agent_id.substr(agent_id.find("_") + 1));
             if (ptr[0] > 1.0)
                 ptr[0] = 1.0;
@@ -182,10 +186,12 @@ public:
             ptr[0] /= mag;
             ptr[1] /= mag;
 
+            // std::cout << ptr[0] << ", " << ptr[1] << std::endl;
+
             if (particle_index < num_particles_)
             {
-                next_particle_positions_[particle_index * 2] += ptr[0] * 0.1;     // Update x
-                next_particle_positions_[particle_index * 2 + 1] += ptr[1] * 0.1; // Update y
+                next_particle_positions_[particle_index * 2] = current_particle_positions_[particle_index * 2] + ptr[0] * 0.1;         // Update x
+                next_particle_positions_[particle_index * 2 + 1] = current_particle_positions_[particle_index * 2 + 1] + ptr[1] * 0.1; // Update y
             }
         }
     }
@@ -209,7 +215,7 @@ public:
                     double d = std::sqrt(particle_dist_sqr);
                     double overlap_dist = total_radius - d;
 
-                    double move_dist = (1.0 / 10.0) * overlap_dist;
+                    double move_dist = (1.0 / 5.0) * overlap_dist;
 
                     double normal_x = dx / d;
                     double normal_y = dy / d;
@@ -284,6 +290,8 @@ public:
                     double normal_x = dx / d;
                     double normal_y = dy / d;
 
+                    // std::cout << "Particle position: " << next_particle_positions_[p * 2] << "," << next_particle_positions_[p * 2 + 1] << ", boulder position: " << current_boulder_positions_[b * 2] << "," << current_boulder_positions_[b * 2 + 1] << ", dx: " << normal_x * overlap_dist << ", dy: " << normal_y * overlap_dist << std::endl;
+
                     // Add the displacement to the particle's total displacement vector
                     particle_displacements[p * 2] += normal_x * overlap_dist;
                     particle_displacements[p * 2 + 1] += normal_y * overlap_dist;
@@ -294,6 +302,8 @@ public:
         {
             current_particle_positions_[p * 2] = next_particle_positions_[p * 2] + particle_displacements[p * 2];
             current_particle_positions_[p * 2 + 1] = next_particle_positions_[p * 2 + 1] + particle_displacements[p * 2 + 1];
+            next_particle_positions_[p * 2] = current_particle_positions_[p * 2];
+            next_particle_positions_[p * 2 + 1] = current_particle_positions_[p * 2 + 1];
         }
     }
 
@@ -316,19 +326,41 @@ public:
         }
         return r;
     }
+    // template <typename T>
+    // void print_vec(const std::vector<T> &v)
+    // {
+    //     for (const auto &element : v)
+    //     {
+    //         std::cout << element << ", ";
+    //     }
+    //     std::cout << std::endl;
+    // }
     // Steps the simulation forward based on agent actions.
     py::tuple step(py::dict actions)
     {
-        std::cout << "C++ step() called." << std::endl;
+        // std::cout << "C++ step() called." << std::endl;
+        // print_vec(current_particle_positions_);
+        // print_vec(next_particle_positions_);
+        //  Sets the particle's desired locations (normalized from action directions)
+        double r = 0.0;
 
-        // Sets the particle's desired locations (normalized from action directions)
-        set_naive_next_pos(actions);
+        for (int i = 0; i < n_physics_steps_; ++i)
+        {
+            set_naive_next_pos(actions);
+            move_things();
+            r += update_landmarks();
+        }
+
+        // std::cout << "After next pos: \n";
+        // print_vec(current_particle_positions_);
+        // print_vec(next_particle_positions_);
 
         // After handling boulder collisions / movement, sets the particles actual locations
-        move_things();
 
-        // Reward of 1 for each boulder that collides with a landmark for the first time
-        double r = update_landmarks();
+        // std::cout << "After move things: \n";
+        // print_vec(current_particle_positions_);
+        // print_vec(next_particle_positions_);
+        //  Reward of 1 for each boulder that collides with a landmark for the first time
 
         py::array_t<double> global_state = get_global_state();
         py::dict observations = get_observations();
@@ -360,7 +392,7 @@ PYBIND11_MODULE(cooppush_cpp, m)
         .def(py::init<>()) // Expose the constructor
         .def("init", &CoopPushEnvironment::init,
              "Initializes the environment with starting positions for all entities.",
-             py::arg("particle_positions"), py::arg("boulder_positions"), py::arg("landmark_positions"))
+             py::arg("particle_positions"), py::arg("boulder_positions"), py::arg("landmark_positions"), py::arg("n_physics_steps"))
         .def("reset", &CoopPushEnvironment::reset,
              "Resets the environment to the initial state and returns (state, observations).")
         .def("step", &CoopPushEnvironment::step,
