@@ -1,104 +1,12 @@
 import gymnasium
 import numpy as np
+import json
 from gymnasium.spaces import Box
 
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import wrappers
 from pettingzoo.utils.env import ActionType, AgentID, ObsType
-import cooppush_cpp
-
-
-# =============================================================================
-# MOCK C++ BACKEND (Simulates your Pybind11 module)
-# =============================================================================
-class Pybind11Backend:
-    """
-    This class is a stand-in for your actual C++ environment compiled with
-    Pybind11. It manages the underlying state and physics of the environment.
-
-    In your real implementation, you would replace this class with:
-    `from my_cpp_project import CppEnvironment`
-    """
-
-    def __init__(self, n_particles: int, continuous_actions: bool):
-        print("Initializing Mock C++ Backend...")
-        self.n_particles = n_particles
-        self.continuous_actions = continuous_actions
-        self.state = None
-
-    def reset(self) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-        """
-        Resets the C++ environment to a starting state.
-
-        Returns:
-            - A NumPy array representing the full global state.
-            - A dictionary of initial observations for each agent.
-        """
-        print("Backend: reset() called.")
-        # Example state: [p1_x, p1_y, p2_x, p2_y, ...]
-        self.state = np.random.rand(self.n_particles * 2).astype(np.float32)
-
-        # Example observations: each agent sees its own position
-        observations = {
-            f"particle_{i}": self.state[i * 2 : (i + 1) * 2]
-            for i in range(self.n_particles)
-        }
-        return self.state, observations
-
-    def step(self, actions: np.ndarray) -> tuple[np.ndarray, dict, dict, dict, dict]:
-        """
-        Steps the C++ environment forward.
-
-        Args:
-            actions: A NumPy array of actions for all agents, concatenated.
-
-        Returns:
-            - The new global state.
-            - A dictionary of new observations.
-            - A dictionary of rewards.
-            - A dictionary of terminations.
-            - A dictionary of truncations (not used in this simple example).
-        """
-        print(f"Backend: step() called with actions:\n{actions}")
-
-        # --- Simulate Physics ---
-        # Move particles based on actions. This is where your core C++ logic lives.
-        # For this example, we'll just add the action vector to the position.
-        if self.continuous_actions:
-            action_reshaped = actions.reshape(self.n_particles, 2)
-            self.state += action_reshaped.flatten() * 0.1  # Apply scaled actions
-        else:  # Discrete actions
-            for i, action in enumerate(actions):
-                if action == 1:
-                    self.state[i * 2] += 0.1  # Right
-                elif action == 2:
-                    self.state[i * 2] -= 0.1  # Left
-                elif action == 3:
-                    self.state[i * 2 + 1] += 0.1  # Up
-                elif action == 4:
-                    self.state[i * 2 + 1] -= 0.1  # Down
-
-        # --- Generate Return Values ---
-        observations = {
-            f"particle_{i}": self.state[i * 2 : (i + 1) * 2]
-            for i in range(self.n_particles)
-        }
-
-        # Example reward: negative distance to origin
-        rewards = {
-            f"particle_{i}": -np.linalg.norm(self.state[i * 2 : (i + 1) * 2])
-            for i in range(self.n_particles)
-        }
-
-        # Example termination: if any particle goes out of bounds [0, 1]
-        is_out_of_bounds = np.any(self.state < 0) or np.any(self.state > 1)
-        terminations = {
-            f"particle_{i}": is_out_of_bounds for i in range(self.n_particles)
-        }
-
-        truncations = {f"particle_{i}": False for i in range(self.n_particles)}
-
-        return self.state, observations, rewards, terminations, truncations
+import cooppush.cooppush_cpp as cooppush_cpp
 
 
 # =============================================================================
@@ -120,42 +28,58 @@ class CoopPushEnv(ParallelEnv):
 
     def __init__(
         self,
-        n_particles: int = 3,
-        continuous_actions: bool = True,
+        json_path="default_push_level.json",
         render_mode: str | None = None,
     ):
         super().__init__()
+        self.continuous_actions = True
+        with open(json_path) as f:
+            env_setup = json.load(f)
+
         env = cooppush_cpp.Environment()
-        env.init([0.0, 1.0], [1.0, 2.0], [2.0, 3.0])
+        env.init(
+            env_setup["particle_pos"],
+            env_setup["boulder_pos"],
+            env_setup["landmark_pos"],
+        )
         print(env)
-        self.n_particles = n_particles
-        self.continuous_actions = continuous_actions
+        self.env = env
+        self.n_particles = len(env_setup["particle_pos"]) // 2
+        self.n_boulders = len(env_setup["boulder_pos"]) // 2
+        self.n_landmarks = len(env_setup["landmark_pos"]) // 2
+
         self.render_mode = render_mode
 
-        # --- Instantiate the C++ Backend ---
-        # In a real project, this would be your imported Pybind11 module.
-        self.backend = Pybind11Backend(n_particles, continuous_actions)
-
         # --- PettingZoo API Requirements ---
-        self.agents = [f"particle_{i}" for i in range(n_particles)]
+        self.agents = [f"particle_{i}" for i in range(self.n_particles)]
         self.possible_agents = self.agents[:]
 
         # Define observation and action spaces for each agent
         # Each agent observes its own (x, y) position
         self.observation_spaces = {
-            agent: Box(low=0, high=1, shape=(2,), dtype=np.float32)
+            agent: Box(
+                low=0,
+                high=1,
+                shape=(
+                    self.n_particles * 4 + self.n_boulders * 2 + self.n_landmarks * 2,
+                ),
+                dtype=np.float32,
+            )
             for agent in self.possible_agents
         }
         if self.continuous_actions:
             # Each agent has a 2D action: (dx, dy)
             self.action_spaces = {
-                agent: Box(low=-1, high=1, shape=(2,), dtype=np.float32)
+                agent: Box(
+                    low=-1, high=1, shape=(self.n_particles * 2,), dtype=np.float32
+                )
                 for agent in self.possible_agents
             }
         else:
             # 0: no-op, 1: right, 2: left, 3: up, 4: down
             self.action_spaces = {
-                agent: gymnasium.spaces.Discrete(5) for agent in self.possible_agents
+                agent: gymnasium.spaces.Discrete(self.n_particles * 2)
+                for agent in self.possible_agents
             }
 
         # --- State Caching for Rendering ---
@@ -175,7 +99,7 @@ class CoopPushEnv(ParallelEnv):
     ) -> tuple[ObsType, dict]:
         """Resets the environment and returns initial observations."""
         # The C++ backend handles the actual reset logic
-        initial_state, initial_obs = self.backend.reset()
+        initial_state, initial_obs = self.env.reset()
 
         # --- Cache the state for rendering ---
         self.cached_state = initial_state
@@ -221,9 +145,7 @@ class CoopPushEnv(ParallelEnv):
         action_array = np.array(ordered_actions)
 
         # --- 2. Call the backend ---
-        new_state, obs, rewards, terminations, truncations = self.backend.step(
-            action_array
-        )
+        new_state, obs, rewards, terminations, truncations = self.env.step(action_array)
 
         # --- 3. Cache the new state ---
         self.cached_state = new_state
@@ -272,7 +194,7 @@ class CoopPushEnv(ParallelEnv):
             # Simple text-based rendering
             print("-" * 20)
             print(
-                f"Current State (Timestep {self.backend.state is not None and len(self.agents)})"
+                f"Current State (Timestep {self.env.state is not None and len(self.agents)})"
             )
             for i in range(self.n_particles):
                 x = self.cached_state[i * 2]
