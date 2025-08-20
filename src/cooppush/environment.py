@@ -38,8 +38,10 @@ class CoopPushEnv(ParallelEnv):
         sparse_weight=5.0,
         randomize_order=False,
         start_noise=0.0,
+        cpp_steps_per_step=5,
     ):
         super().__init__()
+        self.cpp_steps_per_step = cpp_steps_per_step
         self.continuous_actions = True
         self.fps = fps
         self.sparse_rewards = sparse_rewards
@@ -172,7 +174,7 @@ class CoopPushEnv(ParallelEnv):
             self.particle_start_pos,
             self.boulder_start_pos,
             self.landmark_start_pos,
-            5,
+            self.cpp_steps_per_step,
             self.sparse_rewards,
             self.visit_all,
             sparse_weight=self.sparse_weight,
