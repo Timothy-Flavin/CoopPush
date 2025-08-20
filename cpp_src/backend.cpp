@@ -201,9 +201,9 @@ public:
                 ptr[1] = -1.0;
 
             double mag = std::sqrt(ptr[0] * ptr[0] + ptr[1] * ptr[1]);
-            if (mag < 1.0e-8)
+            if (mag < 1.0)
             {
-                mag = 1.0e-8;
+                mag = 1.0;
             }
             ptr[0] /= mag;
             ptr[1] /= mag;
