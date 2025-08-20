@@ -1,12 +1,15 @@
 from cooppush.environment import CoopPushEnv
 import pygame
 import numpy as np
+from pettingzoo.test import parallel_api_test
 
+
+print("Running PettingZoo API Test...")
 env = CoopPushEnv()
-env.reset()
+parallel_api_test(env, num_cycles=1000)
+print("API Test Passed!")
 
-env = CoopPushEnv(render_mode="human")
-observations, infos = env.reset()
+
 keys = {"w": False, "a": False, "s": False, "d": False}
 
 
@@ -51,7 +54,11 @@ def handle_event(keys):
                 keys["d"] = False
 
 
-for step in range(256):
+env = CoopPushEnv(render_mode="human", fps=20, sparse_rewards=False, visit_all=True)
+observations, infos = env.reset()
+
+terminated = False
+while not terminated:
     # Get random actions for each agent
     # print(env.agents)
     actions = {agent: env.action_space(agent).sample() for agent in env.agents}
@@ -62,7 +69,9 @@ for step in range(256):
     actions["particle_0"] = np.array(hact)
 
     observations, rewards, terminations, truncations, infos = env.step(actions)
+    terminated = terminations["particle_0"]
     env.render()
+    # print(terminations)
     if not env.agents:
         print("All agents are done. Resetting.")
         observations, infos = env.reset()

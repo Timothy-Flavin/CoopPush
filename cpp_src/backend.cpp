@@ -12,13 +12,29 @@ class CoopPushEnvironment
 {
 private:
     // Helper function to get the full global state as a NumPy array.
+    std::vector<double> global_state_vec;
     py::array_t<double> get_global_state()
     {
-        std::vector<double> state_vec;
-        state_vec.insert(state_vec.end(), current_particle_positions_.begin(), current_particle_positions_.end());
-        state_vec.insert(state_vec.end(), current_boulder_positions_.begin(), current_boulder_positions_.end());
-        state_vec.insert(state_vec.end(), current_landmark_positions_.begin(), current_landmark_positions_.end());
+        std::vector<double> state_vec(n_particles * 4 + n_boulders * 2 + n_landmarks * 2, 0);
 
+        for (int p = 0; p < n_particles; ++p)
+        {
+            state_vec[p * 4] = current_particle_positions_[p * 2];
+            state_vec[p * 4 + 1] = current_particle_positions_[p * 2 + 1];
+            state_vec[p * 4 + 2] = current_particle_velocities_[p * 2];
+            state_vec[p * 4 + 3] = current_particle_velocities_[p * 2 + 1];
+        }
+        for (int b = 0; b < n_boulders; ++b)
+        {
+            state_vec[n_particles * 4 + 2 * b] = current_boulder_positions_[2 * b];
+            state_vec[n_particles * 4 + 2 * b + 1] = current_boulder_positions_[2 * b + 1];
+        }
+        for (int l = 0; l < n_landmarks; ++l)
+        {
+            state_vec[n_particles * 4 + 2 * n_boulders + 2 * l] = current_landmark_positions_[2 * l];
+            state_vec[n_particles * 4 + 2 * n_boulders + 2 * l + 1] = current_landmark_positions_[2 * l + 1];
+        }
+        global_state_vec = state_vec;
         return py::array_t<double>(state_vec.size(), state_vec.data());
     }
 
@@ -28,26 +44,10 @@ private:
         py::dict obs_dict;
         for (int i = 0; i < n_particles; ++i)
         {
-            std::vector<double> obs_vec(n_particles * 4 + n_boulders * 2 + n_landmarks * 2, 0);
             std::string agent_id = "particle_" + std::to_string(i);
-
-            for (int p = 0; p < n_particles; ++p)
-            {
-                obs_vec[p * 4] = current_particle_positions_[p * 2];
-                obs_vec[p * 4 + 1] = current_particle_positions_[p * 2 + 1];
-                obs_vec[p * 4 + 2] = current_particle_velocities_[p * 2];
-                obs_vec[p * 4 + 3] = current_particle_velocities_[p * 2 + 1];
-            }
-            for (int b = 0; b < n_boulders; ++b)
-            {
-                obs_vec[n_particles * 4 + 2 * b] = current_boulder_positions_[2 * b];
-                obs_vec[n_particles * 4 + 2 * b + 1] = current_boulder_positions_[2 * b + 1];
-            }
-            for (int l = 0; l < n_landmarks; ++l)
-            {
-                obs_vec[n_particles * 4 + 2 * n_boulders + 2 * l] = current_landmark_positions_[2 * l];
-                obs_vec[n_particles * 4 + 2 * n_boulders + 2 * l + 1] = current_landmark_positions_[2 * l + 1];
-            }
+            std::vector<double> obs_vec = global_state_vec; // is this a copy?
+            for (int o = 0; o < 4; ++o)
+                std::swap(obs_vec[i * 4 + o], obs_vec[0 + o]);
             obs_dict[py::str(agent_id)] = py::array_t<double>(obs_vec.size(), obs_vec.data());
         }
         return obs_dict;
@@ -70,11 +70,18 @@ private:
     std::vector<double> current_boulder_velocities_;
 
     std::vector<bool> landmark_pairs;
+    std::vector<bool> finished_boulders;
     int n_landmarks = 0;
     int n_particles = 1;
     int n_boulders = 1;
     int n_lm = 1; // While this is more than zero the env stays on
+    int n_active_boulders = 1;
     int n_physics_steps_ = 5;
+
+    bool sparse_rewards = true;
+    bool visit_all = true;
+    double displacement_reward = 0.0;
+    double sparse_weight = 1.0;
 
     const double LANDMARK_R = 1.0;
     const double BOULDER_R = 5.0;
@@ -97,10 +104,16 @@ public:
         std::vector<double> particle_positions,
         std::vector<double> boulder_positions,
         std::vector<double> landmark_positions,
-        int n_physics_steps = 5)
+        int n_physics_steps = 5,
+        bool sparse_rewards = true,
+        bool visit_all = true,
+        double sparse_weight = 5.0)
     {
         std::cout << "C++ init() called." << std::endl;
         n_physics_steps_ = n_physics_steps;
+        this->visit_all = visit_all;
+        this->sparse_rewards = sparse_rewards;
+        this->sparse_weight = sparse_weight;
         // Store the initial state so we can reset to it later
         initial_particle_positions_ = particle_positions;
         initial_boulder_positions_ = boulder_positions;
@@ -126,6 +139,8 @@ public:
 
         landmark_pairs.resize(n_landmarks * n_boulders, false);
         std::fill(landmark_pairs.begin(), landmark_pairs.end(), false);
+        finished_boulders.resize(n_boulders, false);
+        std::fill(finished_boulders.begin(), finished_boulders.end(), false);
         num_particles_ = static_cast<int>(particle_positions.size() / 2); // Assuming 2D (x, y)
     }
 
@@ -152,6 +167,13 @@ public:
         // Prepare return values
         py::array_t<double> global_state = get_global_state();
         py::dict observations = get_observations();
+        landmark_pairs.resize(n_landmarks * n_boulders, false);
+        std::fill(landmark_pairs.begin(), landmark_pairs.end(), false);
+        finished_boulders.resize(n_boulders, false);
+        std::fill(finished_boulders.begin(), finished_boulders.end(), false);
+
+        n_lm = 1;
+        n_active_boulders = 1;
 
         return py::make_tuple(global_state, observations);
     }
@@ -238,10 +260,10 @@ public:
                 double dx = current_boulder_positions_[j * 2] - current_boulder_positions_[i * 2];
                 double dy = current_boulder_positions_[j * 2 + 1] - current_boulder_positions_[i * 2 + 1];
                 double dist_sqr = dx * dx + dy * dy;
-                if (dist_sqr < total_radius_sq)
+                if (dist_sqr < TOTAL_BOULDER_R_SQ)
                 {
                     double d = std::sqrt(dist_sqr);
-                    double overlap_dist = total_radius - d;
+                    double overlap_dist = TOTAL_BOULDER_R - d;
                     double move_dist = (1.0 / 2.0) * overlap_dist;
 
                     // Normalize the vector from i to j to get the direction
@@ -253,6 +275,41 @@ public:
 
                     boulder_displacements[j * 2] += normal_x * move_dist;
                     boulder_displacements[j * 2 + 1] += normal_y * move_dist;
+                }
+            }
+        }
+
+        if (!sparse_rewards)
+        {
+            displacement_reward = 0.0;
+            for (int b = 0; b < n_boulders; ++b)
+            {
+                int cl = -1;
+                double cd = 10000000.0;
+                double bdx = 1.0e-8;
+                double bdy = 1.0e-8;
+                for (int l = 0; l < n_landmarks; ++l)
+                {
+                    double dx = current_boulder_positions_[b * 2] - current_landmark_positions_[l * 2];
+                    double dy = current_boulder_positions_[b * 2 + 1] - current_landmark_positions_[l * 2 + 1];
+                    if (dx * dx + dy * dy < cd && !landmark_pairs[l * n_boulders + b] && !finished_boulders[b])
+                    {
+                        // std::cout << "Boulder " << b << " closest to landmark " << l << " dx: " << dx << " dy: " << dy << std::endl;
+                        cd = dx * dx + dy * dy;
+                        cl = l;
+                        bdx = dx;
+                        bdy = dy;
+                    }
+                }
+
+                if (cl != -1)
+                {
+                    // double dist = std::sqrt(bdx * bdx + bdy * bdy);
+                    bdx += boulder_displacements[b * 2];
+                    bdy += boulder_displacements[b * 2 + 1];
+                    // std::cout << "Boulder lowest dx dy" << b << " closest to landmark " << cl << " bdx: " << bdx << " bdy: " << bdy << std::endl;
+                    displacement_reward -= std::sqrt(bdx * bdx + bdy * bdy) - std::sqrt(cd);
+                    // std::cout << "Distances " << std::sqrt(bdx * bdx + bdy * bdy) << " , " << std::sqrt(cd) << " displacement reward: " << displacement_reward << std::endl;
                 }
             }
         }
@@ -307,23 +364,58 @@ public:
         }
     }
 
-    double update_landmarks()
+    double get_reward_all()
     {
         double r = 0.0;
+        n_lm = 0;
+        n_active_boulders = 1;
         for (int l = 0; l < n_landmarks; ++l)
         {
             for (int b = 0; b < n_boulders; ++b)
             {
                 double dx = current_boulder_positions_[b * 2] - current_landmark_positions_[l * 2];
                 double dy = current_boulder_positions_[b * 2 + 1] - current_landmark_positions_[l * 2 + 1];
-                if (!landmark_pairs[l * n_boulders + b] && total_radius_sq < dx * dx + dy * dy)
+                if (!landmark_pairs[l * n_boulders + b] && total_radius_sq > dx * dx + dy * dy)
                 {
                     landmark_pairs[l * n_boulders + b] = true;
-                    r += 1.0;
+                    r += sparse_weight;
                 }
-                n_lm += landmark_pairs[l * n_boulders + b];
+                n_lm += !landmark_pairs[l * n_boulders + b];
             }
         }
+        if (!sparse_rewards)
+            r += displacement_reward;
+        return r;
+    }
+    double get_reward_one()
+    {
+        double r = 0.0;
+        n_active_boulders = n_boulders;
+        n_lm = 1;
+
+        for (int b = 0; b < n_boulders; ++b)
+        {
+            if (finished_boulders[b])
+            {
+                --n_active_boulders;
+                continue;
+            }
+            for (int l = 0; l < n_landmarks; ++l)
+            {
+                double dx = current_boulder_positions_[b * 2] - current_landmark_positions_[l * 2];
+                double dy = current_boulder_positions_[b * 2 + 1] - current_landmark_positions_[l * 2 + 1];
+                if (total_radius_sq > dx * dx + dy * dy)
+                {
+                    landmark_pairs[l * n_boulders + b] = true;
+                    finished_boulders[b] = true;
+                    --n_active_boulders;
+                    r += 1.0;
+                    break;
+                }
+            }
+        }
+        if (!sparse_rewards)
+            r += displacement_reward;
         return r;
     }
     // template <typename T>
@@ -348,7 +440,10 @@ public:
         {
             set_naive_next_pos(actions);
             move_things();
-            r += update_landmarks();
+            if (visit_all)
+                r += get_reward_all();
+            else
+                r += get_reward_one();
         }
 
         // std::cout << "After next pos: \n";
@@ -368,11 +463,16 @@ public:
         py::dict terminations = py::dict();
         py::dict truncations = py::dict();
 
+        bool term = false;
+        if (visit_all)
+            term = n_lm == 0;
+        else
+            term = n_active_boulders == 0;
         for (int i = 0; i < num_particles_; ++i)
         {
             std::string agent_id = "particle_" + std::to_string(i);
             rewards[py::str(agent_id)] = r;
-            terminations[py::str(agent_id)] = n_lm == 0;
+            terminations[py::str(agent_id)] = term;
             truncations[py::str(agent_id)] = false;
         }
 
@@ -392,7 +492,7 @@ PYBIND11_MODULE(cooppush_cpp, m)
         .def(py::init<>()) // Expose the constructor
         .def("init", &CoopPushEnvironment::init,
              "Initializes the environment with starting positions for all entities.",
-             py::arg("particle_positions"), py::arg("boulder_positions"), py::arg("landmark_positions"), py::arg("n_physics_steps"))
+             py::arg("particle_positions"), py::arg("boulder_positions"), py::arg("landmark_positions"), py::arg("n_physics_steps"), py::arg("sparse_rewards"), py::arg("visit_all"), py::arg("sparse_weight"))
         .def("reset", &CoopPushEnvironment::reset,
              "Resets the environment to the initial state and returns (state, observations).")
         .def("step", &CoopPushEnvironment::step,

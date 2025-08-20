@@ -16,4 +16,4 @@ ext_modules = [
         ),
     ),
 ]
-setup(ext_modules=ext_modules, name="cooppush", version="1.1.0")
+setup(ext_modules=ext_modules, name="cooppush", version="1.1.1")

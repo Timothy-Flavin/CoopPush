@@ -31,9 +31,14 @@ class CoopPushEnv(ParallelEnv):
         self,
         json_path="default_push_level.json",
         render_mode: str | None = None,
+        fps=10,
+        sparse_rewards=True,
+        visit_all=True,
+        sparse_weight=5.0,
     ):
         super().__init__()
         self.continuous_actions = True
+        self.fps = fps
         with open(json_path) as f:
             env_setup = json.load(f)
 
@@ -43,6 +48,9 @@ class CoopPushEnv(ParallelEnv):
             env_setup["boulder_pos"],
             env_setup["landmark_pos"],
             5,
+            sparse_rewards,
+            visit_all,
+            sparse_weight=sparse_weight,
         )
         print(env)
         self.env = env
@@ -117,7 +125,7 @@ class CoopPushEnv(ParallelEnv):
         initial_state, initial_obs = self.env.reset()
 
         # --- Cache the state for rendering ---
-        self.cached_state = initial_obs["particle_0"]
+        self.cached_state = initial_state
 
         # Reset the list of active agents
         self.agents = self.possible_agents[:]
@@ -147,10 +155,10 @@ class CoopPushEnv(ParallelEnv):
 
         # --- 2. Call the backend ---
         new_state, obs, rewards, terminations, truncations = self.env.step(actions)
-        if rewards["particle_0"] > 0:
-            print(rewards)
+        # if rewards["particle_0"] != 0:
+        #    print(rewards)
         # --- 3. Cache the new state ---
-        self.cached_state = np.copy(obs["particle_0"])
+        self.cached_state = np.copy(new_state)
 
         # --- 4. Format results for PettingZoo ---
         # Handle agent termination
@@ -278,7 +286,7 @@ class CoopPushEnv(ParallelEnv):
         pygame.display.flip()
 
         # Control the frame rate
-        self.clock.tick(10)
+        self.clock.tick(self.fps)
 
     def close(self):
         """Called to clean up resources."""
