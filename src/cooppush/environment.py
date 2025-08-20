@@ -9,6 +9,7 @@ from pettingzoo import ParallelEnv
 from pettingzoo.utils import wrappers
 from pettingzoo.utils.env import ActionType, AgentID, ObsType
 import cooppush.cooppush_cpp as cooppush_cpp
+import time
 
 
 # =============================================================================
@@ -116,6 +117,7 @@ class CoopPushEnv(ParallelEnv):
         # This variable will hold the full state returned by the C++ backend
         # so the `render` function can use it without making another C++ call.
         self.cached_state = np.zeros(100)
+        self.start = time.time()
 
     def _shuffle(self):
         arrs = [
@@ -149,6 +151,7 @@ class CoopPushEnv(ParallelEnv):
         self, seed: int | None = None, options: dict | None = None
     ) -> tuple[ObsType, dict]:
         """Resets the environment and returns initial observations."""
+        self.start = time.time()
         # The C++ backend handles the actual reset logic
         self.boulder_start_pos = np.copy(self._initial_boulder_pos)
         self.particle_start_pos = np.copy(self._initial_particle_pos)
@@ -211,6 +214,7 @@ class CoopPushEnv(ParallelEnv):
         3. Caches the new state for rendering.
         4. Returns results in PettingZoo format.
         """
+        self.start = time.time()
         if self.requires_reset:
             warnings.warn(
                 "ENV HAS NOT BEEN RESET BEFORE USE OR AFTER TERMINATION, UNPREDICTABLE BEHAVIOR AHEAD"
@@ -241,9 +245,6 @@ class CoopPushEnv(ParallelEnv):
         infos = {
             agent: {"global_state": self.cached_state} for agent in self.possible_agents
         }
-
-        if self.render_mode == "human":
-            self.render()
 
         return obs, rewards, terminations, truncations, infos
 
@@ -349,7 +350,8 @@ class CoopPushEnv(ParallelEnv):
         pygame.display.flip()
 
         # Control the frame rate
-        self.clock.tick(self.fps)
+        if time.time() - self.start < 1 / self.fps:
+            time.sleep(1 / self.fps - (time.time() - self.start))
 
     def close(self):
         """Called to clean up resources."""
