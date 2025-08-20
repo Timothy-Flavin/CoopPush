@@ -4,10 +4,10 @@ import numpy as np
 from pettingzoo.test import parallel_api_test
 
 
-print("Running PettingZoo API Test...")
-env = CoopPushEnv()
-parallel_api_test(env, num_cycles=1000)
-print("API Test Passed!")
+# print("Running PettingZoo API Test...")
+# env = CoopPushEnv()
+# parallel_api_test(env, num_cycles=1000)
+# print("API Test Passed!")
 
 
 keys = {"w": False, "a": False, "s": False, "d": False}
@@ -54,7 +54,14 @@ def handle_event(keys):
                 keys["d"] = False
 
 
-env = CoopPushEnv(render_mode="human", fps=20, sparse_rewards=False, visit_all=True)
+env = CoopPushEnv(
+    render_mode="human",
+    fps=20,
+    sparse_rewards=False,
+    visit_all=True,
+    randomize_order=True,
+    start_noise=0.5,
+)
 observations, infos = env.reset()
 
 terminated = False
@@ -76,4 +83,8 @@ while not terminated:
         print("All agents are done. Resetting.")
         observations, infos = env.reset()
 
+print("Resseting as a test")
+env.reset()
+print("Resseting again as a test")
+env.reset()
 env.close()

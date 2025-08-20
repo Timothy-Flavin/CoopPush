@@ -3,6 +3,7 @@ import numpy as np
 import json
 from gymnasium.spaces import Box
 import pygame
+import warnings
 
 from pettingzoo import ParallelEnv
 from pettingzoo.utils import wrappers
@@ -35,32 +36,36 @@ class CoopPushEnv(ParallelEnv):
         sparse_rewards=True,
         visit_all=True,
         sparse_weight=5.0,
+        randomize_order=False,
+        start_noise=0.0,
     ):
         super().__init__()
         self.continuous_actions = True
         self.fps = fps
+        self.sparse_rewards = sparse_rewards
+        self.visit_all = visit_all
+        self.sparse_weight = sparse_weight
+        self.requires_reset = True
         with open(json_path) as f:
             env_setup = json.load(f)
-
-        env = cooppush_cpp.Environment()
-        env.init(
-            env_setup["particle_pos"],
-            env_setup["boulder_pos"],
-            env_setup["landmark_pos"],
-            5,
-            sparse_rewards,
-            visit_all,
-            sparse_weight=sparse_weight,
-        )
-        print(env)
-        self.env = env
         self.n_particles = len(env_setup["particle_pos"]) // 2
         self.n_boulders = len(env_setup["boulder_pos"]) // 2
         self.n_landmarks = len(env_setup["landmark_pos"]) // 2
         self.particle_radius = 1
         self.landmark_radius = 1
         self.boulder_radius = 5
+        self.randomize_order = randomize_order
+        self.start_noise = start_noise
+        self.cpp_env = cooppush_cpp.Environment()
 
+        # Setting persistent variables for reset() to add noise or shuffle
+        # Starting positions
+        self._initial_particle_pos = np.array(env_setup["particle_pos"])
+        self._initial_boulder_pos = np.array(env_setup["boulder_pos"])
+        self._initial_landmark_pos = np.array(env_setup["landmark_pos"])
+        self.boulder_start_pos = np.copy(self._initial_boulder_pos)
+        self.particle_start_pos = np.copy(self._initial_particle_pos)
+        self.landmark_start_pos = np.copy(self._initial_landmark_pos)
         self.render_mode = render_mode
         # Persistent variables for rendering
         self.screen = None
@@ -81,7 +86,7 @@ class CoopPushEnv(ParallelEnv):
         self.possible_agents = self.agents[:]
 
         # Define observation and action spaces for each agent
-        # Each agent observes its own (x, y) position
+        # Each agent observes its own all x,y positions, but it's own comes first
         self.observation_spaces = {
             agent: Box(
                 low=0,
@@ -110,6 +115,27 @@ class CoopPushEnv(ParallelEnv):
         # so the `render` function can use it without making another C++ call.
         self.cached_state = np.zeros(100)
 
+    def _shuffle(self):
+        arrs = [
+            self.particle_start_pos,
+            self.boulder_start_pos,
+            self.landmark_start_pos,
+        ]
+        for arr in arrs:
+            pairs = np.reshape(arr, (-1, 2))
+            np.random.shuffle(pairs)
+
+    def _add_noise(self):
+        arrs = [
+            self.particle_start_pos,
+            self.boulder_start_pos,
+            self.landmark_start_pos,
+        ]
+        for ari in range(3):
+            arrs[ari] += (
+                np.random.random(size=arrs[ari].size) * self.start_noise
+            ) - self.start_noise / 2
+
     # Note: PettingZoo uses @functools.lru_cache(maxsize=None) for these properties
     def observation_space(self, agent: AgentID) -> gymnasium.spaces.Space:
         return self.observation_spaces[agent]
@@ -122,7 +148,36 @@ class CoopPushEnv(ParallelEnv):
     ) -> tuple[ObsType, dict]:
         """Resets the environment and returns initial observations."""
         # The C++ backend handles the actual reset logic
-        initial_state, initial_obs = self.env.reset()
+        self.boulder_start_pos = np.copy(self._initial_boulder_pos)
+        self.particle_start_pos = np.copy(self._initial_particle_pos)
+        self.landmark_start_pos = np.copy(self._initial_landmark_pos)
+
+        print(f"Particle start pos: {self.particle_start_pos}")
+        print(f"Boulder start pos: {self.boulder_start_pos}")
+        print(f"Landmark start pos: {self.landmark_start_pos}")
+        if self.randomize_order:
+            self._shuffle()
+
+        print(f"Shuffled Particle start pos: {self.particle_start_pos}")
+        print(f"Shuffled Boulder start pos: {self.boulder_start_pos}")
+        print(f"Shuffled Landmark start pos: {self.landmark_start_pos}")
+        if self.start_noise > 0.001:
+            self._add_noise()
+
+        print(f"Noisy Particle start pos: {self.particle_start_pos}")
+        print(f"Noisy Boulder start pos: {self.boulder_start_pos}")
+        print(f"Noise Landmark start pos: {self.landmark_start_pos}")
+
+        self.cpp_env.init(
+            self.particle_start_pos,
+            self.boulder_start_pos,
+            self.landmark_start_pos,
+            5,
+            self.sparse_rewards,
+            self.visit_all,
+            sparse_weight=self.sparse_weight,
+        )
+        initial_state, initial_obs = self.cpp_env.reset()
 
         # --- Cache the state for rendering ---
         self.cached_state = initial_state
@@ -131,6 +186,8 @@ class CoopPushEnv(ParallelEnv):
         self.agents = self.possible_agents[:]
 
         infos = {agent: {} for agent in self.agents}
+
+        self.requires_reset = False
 
         if self.render_mode == "human":
             self.render()
@@ -152,9 +209,12 @@ class CoopPushEnv(ParallelEnv):
         3. Caches the new state for rendering.
         4. Returns results in PettingZoo format.
         """
-
+        if self.requires_reset:
+            warnings.warn(
+                "ENV HAS NOT BEEN RESET BEFORE USE OR AFTER TERMINATION, UNPREDICTABLE BEHAVIOR AHEAD"
+            )
         # --- 2. Call the backend ---
-        new_state, obs, rewards, terminations, truncations = self.env.step(actions)
+        new_state, obs, rewards, terminations, truncations = self.cpp_env.step(actions)
         # if rewards["particle_0"] != 0:
         #    print(rewards)
         # --- 3. Cache the new state ---
@@ -173,6 +233,7 @@ class CoopPushEnv(ParallelEnv):
             if not (terminations[agent] or truncations[agent])
         ):
             self.agents.clear()
+            self.requires_reset = True
 
         # Add the global state to the info dict for CTDE algorithms
         infos = {
