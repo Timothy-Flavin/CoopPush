@@ -350,8 +350,8 @@ class CoopPushEnv(ParallelEnv):
         pygame.display.flip()
 
         # Control the frame rate
-        if time.time() - self.start < 1 / self.fps:
-            time.sleep(1 / self.fps - (time.time() - self.start))
+        self.clock.tick(self.fps)
+        pygame.event.clear()
 
     def close(self):
         """Called to clean up resources."""
