@@ -147,8 +147,8 @@ class CoopPushEnv(ParallelEnv):
     def action_space(self, agent: AgentID) -> gymnasium.spaces.Space:
         return self.action_spaces[agent]
 
-    def reset(
-        self, seed: int | None = None, options: dict | None = None
+    def reset(  # type:ignore
+        self, seed: int | None = None, options: dict | None = None, debug=False
     ) -> tuple[ObsType, dict]:
         """Resets the environment and returns initial observations."""
         self.start = time.time()
@@ -157,21 +157,24 @@ class CoopPushEnv(ParallelEnv):
         self.particle_start_pos = np.copy(self._initial_particle_pos)
         self.landmark_start_pos = np.copy(self._initial_landmark_pos)
 
-        print(f"Particle start pos: {self.particle_start_pos}")
-        print(f"Boulder start pos: {self.boulder_start_pos}")
-        print(f"Landmark start pos: {self.landmark_start_pos}")
+        if debug:
+            print(f"Particle start pos: {self.particle_start_pos}")
+            print(f"Boulder start pos: {self.boulder_start_pos}")
+            print(f"Landmark start pos: {self.landmark_start_pos}")
         if self.randomize_order:
             self._shuffle()
 
-        print(f"Shuffled Particle start pos: {self.particle_start_pos}")
-        print(f"Shuffled Boulder start pos: {self.boulder_start_pos}")
-        print(f"Shuffled Landmark start pos: {self.landmark_start_pos}")
+        if debug:
+            print(f"Shuffled Particle start pos: {self.particle_start_pos}")
+            print(f"Shuffled Boulder start pos: {self.boulder_start_pos}")
+            print(f"Shuffled Landmark start pos: {self.landmark_start_pos}")
         if self.start_noise > 0.001:
             self._add_noise()
 
-        print(f"Noisy Particle start pos: {self.particle_start_pos}")
-        print(f"Noisy Boulder start pos: {self.boulder_start_pos}")
-        print(f"Noise Landmark start pos: {self.landmark_start_pos}")
+        if debug:
+            print(f"Noisy Particle start pos: {self.particle_start_pos}")
+            print(f"Noisy Boulder start pos: {self.boulder_start_pos}")
+            print(f"Noise Landmark start pos: {self.landmark_start_pos}")
 
         self.cpp_env.init(
             self.particle_start_pos,
@@ -199,7 +202,7 @@ class CoopPushEnv(ParallelEnv):
 
         return initial_obs, infos
 
-    def step(self, actions: ActionType) -> tuple[
+    def step(self, actions: ActionType) -> tuple[  # type:ignore
         ObsType,
         dict[AgentID, float],
         dict[AgentID, bool],
