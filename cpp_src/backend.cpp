@@ -15,7 +15,12 @@ private:
     std::vector<double> global_state_vec;
     py::array_t<double> get_global_state()
     {
-        std::vector<double> state_vec(n_particles * 4 + n_boulders * 2 + n_landmarks * 2, 0);
+        int visit_every_state_size = 0;
+        if (visit_all)
+            visit_every_state_size = n_boulders * n_landmarks;
+        else:
+            visit_every_state_size = n_boulders
+        std::vector<double> state_vec(n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size, 0);
 
         for (int p = 0; p < n_particles; ++p)
         {
@@ -33,6 +38,20 @@ private:
         {
             state_vec[n_particles * 4 + 2 * n_boulders + 2 * l] = current_landmark_positions_[2 * l];
             state_vec[n_particles * 4 + 2 * n_boulders + 2 * l + 1] = current_landmark_positions_[2 * l + 1];
+        }
+        if (visit_all)
+        {
+            for (int v = 0; v < visit_every_state_size; ++v)
+            {
+                state_vec[n_particles * 4 + 2 * n_boulders + 2 * n_landmarks + v] = landmark_pairs[v];
+            }
+        }
+        else
+        {
+            for (int v = 0; v < visit_every_state_size; ++v)
+            {
+                state_vec[n_particles * 4 + 2 * n_boulders + 2 * n_landmarks + v] = finished_boulders[v];
+            }
         }
         global_state_vec = state_vec;
         return py::array_t<double>(state_vec.size(), state_vec.data());
@@ -212,6 +231,8 @@ public:
 
             if (particle_index < num_particles_)
             {
+                current_particle_velocities_[particle_index * 2] = ptr[0];
+                current_particle_velocities_[particle_index * 2 + 1] = ptr[1];
                 next_particle_positions_[particle_index * 2] = current_particle_positions_[particle_index * 2] + ptr[0] * 0.1;         // Update x
                 next_particle_positions_[particle_index * 2 + 1] = current_particle_positions_[particle_index * 2 + 1] + ptr[1] * 0.1; // Update y
             }

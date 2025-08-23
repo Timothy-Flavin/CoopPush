@@ -90,12 +90,20 @@ class CoopPushEnv(ParallelEnv):
 
         # Define observation and action spaces for each agent
         # Each agent observes its own all x,y positions, but it's own comes first
+        v_every_size = 0
+        if visit_all:
+            v_every_size = self.n_boulders * self.n_landmarks
+        else:
+            v_every_size = self.n_boulders
         self.observation_spaces = {
             agent: Box(
                 low=0,
                 high=1,
                 shape=(
-                    self.n_particles * 4 + self.n_boulders * 2 + self.n_landmarks * 2,
+                    self.n_particles * 4
+                    + self.n_boulders * 2
+                    + self.n_landmarks * 2
+                    + v_every_size,
                 ),
                 dtype=np.float32,
             )
