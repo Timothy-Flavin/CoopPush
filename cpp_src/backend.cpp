@@ -18,8 +18,9 @@ private:
         int visit_every_state_size = 0;
         if (visit_all)
             visit_every_state_size = n_boulders * n_landmarks;
-        else:
-            visit_every_state_size = n_boulders
+        else
+            visit_every_state_size = n_boulders;
+
         std::vector<double> state_vec(n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size, 0);
 
         for (int p = 0; p < n_particles; ++p)
