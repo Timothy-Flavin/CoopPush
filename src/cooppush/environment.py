@@ -95,6 +95,11 @@ class CoopPushEnv(ParallelEnv):
             v_every_size = self.n_boulders * self.n_landmarks
         else:
             v_every_size = self.n_boulders
+
+        # print(
+        #    f"shape=({self.n_particles * 4}+ {self.n_boulders * 2}+ {self.n_landmarks * 2}+ {v_every_size})"
+        # )
+
         self.observation_spaces = {
             agent: Box(
                 low=0,

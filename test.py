@@ -56,6 +56,7 @@ def handle_event(keys):
 
 env = CoopPushEnv(
     render_mode="human",
+    cpp_steps_per_step=10,
     fps=20,
     sparse_rewards=False,
     visit_all=True,
@@ -63,7 +64,10 @@ env = CoopPushEnv(
     start_noise=0.5,
 )
 observations, infos = env.reset()
-
+#'physics_steps': 10, 'sparse_rewards': False, 'randomize_order': True, 'start_noise': 1.0, 'level_name': './levels/dependent.json', 'visit_all': True
+print(observations["particle_0"].shape)
+print(env.observation_space("particle_0").shape)
+input("this make sense?")
 terminated = False
 while not terminated:
     # Get random actions for each agent

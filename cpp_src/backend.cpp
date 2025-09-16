@@ -21,6 +21,7 @@ private:
         else
             visit_every_state_size = n_boulders;
 
+        // std::cout << "npart4: " << n_particles * 4 << " nb*2 " << n_boulders * 2 << " nlandmark2 " << n_landmarks * 2 << " vess " << visit_every_state_size << std::endl;
         std::vector<double> state_vec(n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size, 0);
 
         for (int p = 0; p < n_particles; ++p)
@@ -68,6 +69,7 @@ private:
             std::vector<double> obs_vec = global_state_vec; // is this a copy?
             for (int o = 0; o < 4; ++o)
                 std::swap(obs_vec[i * 4 + o], obs_vec[0 + o]);
+            // std::cout << "Obs vec in cpp " << obs_vec.size() << std::endl;
             obs_dict[py::str(agent_id)] = py::array_t<double>(obs_vec.size(), obs_vec.data());
         }
         return obs_dict;
@@ -129,7 +131,7 @@ public:
         bool visit_all = true,
         double sparse_weight = 5.0)
     {
-        std::cout << "C++ init() called." << std::endl;
+        // std::cout << "C++ init() called." << std::endl;
         n_physics_steps_ = n_physics_steps;
         this->visit_all = visit_all;
         this->sparse_rewards = sparse_rewards;
@@ -149,7 +151,7 @@ public:
         next_landmark_positions_ = landmark_positions;
 
         n_landmarks = static_cast<int>(initial_landmark_positions_.size() / 2);
-        n_boulders = static_cast<int>(initial_landmark_positions_.size() / 2);
+        n_boulders = static_cast<int>(initial_boulder_positions_.size() / 2);
         n_particles = static_cast<int>(initial_particle_positions_.size() / 2);
 
         current_boulder_velocities_.resize(initial_boulder_positions_.size(), 0.0);
@@ -167,7 +169,7 @@ public:
     // Resets the environment to the last initialized state.
     py::tuple reset()
     {
-        std::cout << "C++ reset() called." << std::endl;
+        // std::cout << "C++ reset() called." << std::endl;
         if (initial_particle_positions_.empty())
         {
             throw std::runtime_error("Environment must be initialized with init() before reset() can be called.");
