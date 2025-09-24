@@ -52,6 +52,7 @@ def handle_event(keys):
                 keys["s"] = False
             if event.key == pygame.K_d:
                 keys["d"] = False
+    pygame.event.clear()
 
 
 env = CoopPushEnv(
@@ -62,12 +63,15 @@ env = CoopPushEnv(
     visit_all=True,
     randomize_order=True,
     start_noise=0.5,
+    normalize_observations=True,
 )
 observations, infos = env.reset()
+
 #'physics_steps': 10, 'sparse_rewards': False, 'randomize_order': True, 'start_noise': 1.0, 'level_name': './levels/dependent.json', 'visit_all': True
+n_agents = len(env.agents)
 print(observations["particle_0"].shape)
 print(env.observation_space("particle_0").shape)
-input("this make sense?")
+# input("this make sense?")
 terminated = False
 while not terminated:
     # Get random actions for each agent
@@ -81,7 +85,7 @@ while not terminated:
 
     observations, rewards, terminations, truncations, infos = env.step(actions)
     terminated = terminations["particle_0"]
-    env.render()
+    env.render(importance=np.arange(n_agents) / n_agents)
     # print(terminations)
     if not env.agents:
         print("All agents are done. Resetting.")

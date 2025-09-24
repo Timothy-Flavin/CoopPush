@@ -40,8 +40,10 @@ class CoopPushEnv(ParallelEnv):
         randomize_order=False,
         start_noise=0.0,
         cpp_steps_per_step=5,
+        normalize_observations=True,
     ):
         super().__init__()
+        self.normalize_observations = normalize_observations
         self.cpp_steps_per_step = cpp_steps_per_step
         self.continuous_actions = True
         self.fps = fps
@@ -95,7 +97,7 @@ class CoopPushEnv(ParallelEnv):
             v_every_size = self.n_boulders * self.n_landmarks
         else:
             v_every_size = self.n_boulders
-
+        self.v_every_size = v_every_size
         # print(
         #    f"shape=({self.n_particles * 4}+ {self.n_boulders * 2}+ {self.n_landmarks * 2}+ {v_every_size})"
         # )
@@ -199,18 +201,41 @@ class CoopPushEnv(ParallelEnv):
             sparse_weight=self.sparse_weight,
         )
         initial_state, initial_obs = self.cpp_env.reset()
-
         # --- Cache the state for rendering ---
-        self.cached_state = initial_state
-
+        self.cached_state = initial_state.copy()
         # Reset the list of active agents
         self.agents = self.possible_agents[:]
-
         infos = {agent: {} for agent in self.agents}
-
         self.requires_reset = False
 
+        if self.normalize_observations:
+            norm_array = np.ones(
+                self.n_particles * 4
+                + self.n_boulders * 2
+                + self.n_landmarks * 2
+                + self.v_every_size,
+                dtype=np.float32,
+            )
+            for i in range(self.n_particles):
+                norm_array[i * 4] = 25.0
+                norm_array[i * 4 + 1] = 25.0
+                norm_array[i * 4 + 2] = 1.0
+                norm_array[i * 4 + 3] = 1.0
+            for i in range(self.n_boulders):
+                norm_array[self.n_particles * 4 + i * 2] = 25.0
+                norm_array[self.n_particles * 4 + i * 2 + 1] = 25.0
+            for i in range(self.n_landmarks):
+                norm_array[self.n_particles * 4 + self.n_boulders * 2 + i * 2] = 25.0
+                norm_array[self.n_particles * 4 + self.n_boulders * 2 + i * 2 + 1] = (
+                    25.0
+                )
+            self.norm_array = norm_array
+            initial_state = initial_state / norm_array
+            for agent in initial_obs:
+                initial_obs[agent] = initial_obs[agent] / norm_array
+
         if self.render_mode == "human":
+            self.font = pygame.font.Font(None, 24)
             self.render()
 
         return initial_obs, infos
@@ -262,6 +287,11 @@ class CoopPushEnv(ParallelEnv):
             agent: {"global_state": self.cached_state} for agent in self.possible_agents
         }
 
+        if self.normalize_observations:
+            new_state = new_state / self.norm_array
+            for agent in obs:
+                obs[agent] = obs[agent] / self.norm_array
+
         return obs, rewards, terminations, truncations, infos
 
     def scale_to_screen(self, x, y):
@@ -305,7 +335,7 @@ class CoopPushEnv(ParallelEnv):
             self.max_x = avg_x + self.scale * self.screen_width / 2
             self.x_range = self.max_x - self.min_x
 
-    def render(self) -> None | str:
+    def render(self, importance: None | np.ndarray = None) -> None | str:
         """
         Renders the environment to the screen using Pygame.
 
@@ -330,14 +360,21 @@ class CoopPushEnv(ParallelEnv):
         # Draw particles
         for i in range(self.n_particles):
             # Calculate the index for the particle's x and y coordinates
+            my_col = PARTICLE_COLOR
+            if importance is not None:
+                my_col = tuple(int(c * importance[i]) for c in PARTICLE_COLOR)
+
             x_idx = i * 4
             y_idx = i * 4 + 1
             x = self.cached_state[x_idx]
             y = self.cached_state[y_idx]
             center = self.scale_to_screen(x, y)
             radius = int(self.particle_radius / self.scale)
-            pygame.draw.circle(self.screen, PARTICLE_COLOR, center, radius)
-
+            pygame.draw.circle(self.screen, my_col, center, radius)
+            # Render agent id as text on agent
+            agent_label = self.font.render(str(i), True, (255, 255, 255))
+            label_rect = agent_label.get_rect(center=center)
+            self.screen.blit(agent_label, label_rect)
         # Draw boulders
         for i in range(self.n_boulders):
             # Calculate the index for the boulder's x and y coordinates
@@ -367,7 +404,7 @@ class CoopPushEnv(ParallelEnv):
 
         # Control the frame rate
         self.clock.tick(self.fps)
-        pygame.event.clear()
+        # pygame.event.clear()
 
     def close(self):
         """Called to clean up resources."""
