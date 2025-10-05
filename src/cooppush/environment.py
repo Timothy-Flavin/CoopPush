@@ -39,12 +39,16 @@ class CoopPushEnv(ParallelEnv):
         sparse_weight=5.0,
         randomize_order=False,
         start_noise=0.0,
-        cpp_steps_per_step=5,
+        cpp_steps_per_step=10,
         normalize_observations=True,
+        dt=0.1,
+        boulder_weight=5.0,
     ):
         super().__init__()
+        self.boulder_weight = boulder_weight
         self.normalize_observations = normalize_observations
         self.cpp_steps_per_step = cpp_steps_per_step
+        self.dt = float(dt)
         self.continuous_actions = True
         self.fps = fps
         self.sparse_rewards = sparse_rewards
@@ -199,6 +203,8 @@ class CoopPushEnv(ParallelEnv):
             self.sparse_rewards,
             self.visit_all,
             sparse_weight=self.sparse_weight,
+            dt=self.dt,
+            boulder_weight=self.boulder_weight,
         )
         initial_state, initial_obs = self.cpp_env.reset()
         # --- Cache the state for rendering ---

@@ -104,6 +104,8 @@ private:
     bool visit_all = true;
     double displacement_reward = 0.0;
     double sparse_weight = 1.0;
+    double delta_time = 0.1;
+    double boulder_weight = 5.0;
 
     const double LANDMARK_R = 1.0;
     const double BOULDER_R = 5.0;
@@ -129,10 +131,13 @@ public:
         int n_physics_steps = 5,
         bool sparse_rewards = true,
         bool visit_all = true,
-        double sparse_weight = 5.0)
+        double sparse_weight = 5.0,
+        double dt = 0.1,
+        double boulder_weight = 5.0)
     {
         // std::cout << "C++ init() called." << std::endl;
         n_physics_steps_ = n_physics_steps;
+        delta_time = dt;
         this->visit_all = visit_all;
         this->sparse_rewards = sparse_rewards;
         this->sparse_weight = sparse_weight;
@@ -236,8 +241,8 @@ public:
             {
                 current_particle_velocities_[particle_index * 2] = ptr[0];
                 current_particle_velocities_[particle_index * 2 + 1] = ptr[1];
-                next_particle_positions_[particle_index * 2] = current_particle_positions_[particle_index * 2] + ptr[0] * 0.1;         // Update x
-                next_particle_positions_[particle_index * 2 + 1] = current_particle_positions_[particle_index * 2 + 1] + ptr[1] * 0.1; // Update y
+                next_particle_positions_[particle_index * 2] = current_particle_positions_[particle_index * 2] + ptr[0] * delta_time;         // Update x
+                next_particle_positions_[particle_index * 2 + 1] = current_particle_positions_[particle_index * 2 + 1] + ptr[1] * delta_time; // Update y
             }
         }
     }
@@ -261,7 +266,7 @@ public:
                     double d = std::sqrt(particle_dist_sqr);
                     double overlap_dist = total_radius - d;
 
-                    double move_dist = (1.0 / 5.0) * overlap_dist;
+                    double move_dist = (1.0 / boulder_weight) * overlap_dist;
 
                     double normal_x = dx / d;
                     double normal_y = dy / d;
@@ -516,7 +521,15 @@ PYBIND11_MODULE(cooppush_cpp, m)
         .def(py::init<>()) // Expose the constructor
         .def("init", &CoopPushEnvironment::init,
              "Initializes the environment with starting positions for all entities.",
-             py::arg("particle_positions"), py::arg("boulder_positions"), py::arg("landmark_positions"), py::arg("n_physics_steps"), py::arg("sparse_rewards"), py::arg("visit_all"), py::arg("sparse_weight"))
+             py::arg("particle_positions"),
+             py::arg("boulder_positions"),
+             py::arg("landmark_positions"),
+             py::arg("n_physics_steps"),
+             py::arg("sparse_rewards"),
+             py::arg("visit_all"),
+             py::arg("sparse_weight"),
+             py::arg("dt") = 0.1,
+             py::arg("boulder_weight") = 5.0)
         .def("reset", &CoopPushEnvironment::reset,
              "Resets the environment to the initial state and returns (state, observations).")
         .def("step", &CoopPushEnvironment::step,
