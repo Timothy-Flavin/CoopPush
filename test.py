@@ -111,6 +111,8 @@ n_agents = len(env.agents)
 print(observations["particle_0"].shape)
 print(env.observation_space("particle_0").shape)
 # input("this make sense?")
+env.render(importance=None)  # np.arange(n_agents) / n_agents
+
 terminated = False
 step = 1
 while not terminated:
@@ -118,6 +120,8 @@ while not terminated:
     # print(env.agents)
     actions = {agent: env.action_space(agent).sample() for agent in env.agents}
     # print(f"\nStep {step + 1}")
+    for a in env.agents:
+        actions[a] = [0, 0]
     # print(f"Actions: {actions}")
     print(observations["particle_0"][0:4])
     handle_event(keys)
@@ -126,9 +130,11 @@ while not terminated:
     actions["particle_0"] = np.array(hact)
     actions["particle_1"] = np.array(hact2)
 
+    input()
+
     observations, rewards, terminations, truncations, infos = env.step(actions)
     terminated = terminations["particle_0"]
-    env.render(importance=np.arange(n_agents) / n_agents)
+    env.render(importance=None)  # np.arange(n_agents) / n_agents
     # print(terminations)
     step += 1
     if not env.agents:

@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <iostream>
+#include <thread>
 
 namespace py = pybind11;
 
@@ -106,6 +107,8 @@ private:
     double sparse_weight = 1.0;
     double delta_time = 0.1;
     double boulder_weight = 5.0;
+    int truncate_after_steps_ = 1000;
+    int current_step = 0;
 
     const double LANDMARK_R = 1.0;
     const double BOULDER_R = 5.0;
@@ -133,10 +136,13 @@ public:
         bool visit_all = true,
         double sparse_weight = 5.0,
         double dt = 0.1,
-        double boulder_weight = 5.0)
+        double boulder_weight = 5.0,
+        int truncate_after_steps = 1000)
     {
         // std::cout << "C++ init() called." << std::endl;
         n_physics_steps_ = n_physics_steps;
+        this->truncate_after_steps_ = truncate_after_steps;
+        this->current_step = 0;
         delta_time = dt;
         this->visit_all = visit_all;
         this->sparse_rewards = sparse_rewards;
@@ -181,6 +187,7 @@ public:
         }
 
         // Reset current state to the stored initial state
+        this->current_step = 0;
         current_particle_positions_ = initial_particle_positions_;
         current_boulder_positions_ = initial_boulder_positions_;
         current_landmark_positions_ = initial_landmark_positions_;
@@ -205,6 +212,7 @@ public:
         return py::make_tuple(global_state, observations);
     }
 
+    // Steps the environment given a dictionary of actions for each agent.
     void set_naive_next_pos(py::dict &actions)
     {
         for (auto item : actions)
@@ -244,6 +252,87 @@ public:
                 next_particle_positions_[particle_index * 2] = current_particle_positions_[particle_index * 2] + ptr[0] * delta_time;         // Update x
                 next_particle_positions_[particle_index * 2 + 1] = current_particle_positions_[particle_index * 2 + 1] + ptr[1] * delta_time; // Update y
             }
+        }
+    }
+
+    // actions in the shape (n_particles, 2)
+    void set_naive_next_pos(py::array_t<double> actions)
+    {
+        // Accept either a (n_particles,2) array or a flat array of length n_particles*2
+        auto buf = actions.request();
+        if (buf.ndim == 2)
+        {
+            ssize_t rows = buf.shape[0];
+            ssize_t cols = buf.shape[1];
+            double *ptr = static_cast<double *>(buf.ptr);
+            if (cols != 2)
+                throw std::runtime_error("actions must have shape (n,2)");
+
+            ssize_t use_n = std::min<ssize_t>(rows, num_particles_);
+            for (ssize_t i = 0; i < use_n; ++i)
+            {
+                double ax = ptr[i * 2];
+                double ay = ptr[i * 2 + 1];
+
+                // clamp
+                if (ax > 1.0)
+                    ax = 1.0;
+                if (ax < -1.0)
+                    ax = -1.0;
+                if (ay > 1.0)
+                    ay = 1.0;
+                if (ay < -1.0)
+                    ay = -1.0;
+
+                double mag = std::sqrt(ax * ax + ay * ay);
+                if (mag < 1.0)
+                    mag = 1.0;
+                ax /= mag;
+                ay /= mag;
+
+                current_particle_velocities_[i * 2] = ax;
+                current_particle_velocities_[i * 2 + 1] = ay;
+                next_particle_positions_[i * 2] = current_particle_positions_[i * 2] + ax * delta_time;
+                next_particle_positions_[i * 2 + 1] = current_particle_positions_[i * 2 + 1] + ay * delta_time;
+            }
+        }
+        else if (buf.ndim == 1)
+        {
+            ssize_t len = buf.shape[0];
+            if (len % 2 != 0)
+                throw std::runtime_error("flat actions array length must be multiple of 2");
+            ssize_t use_n = std::min<ssize_t>(len / 2, num_particles_);
+            double *ptr = static_cast<double *>(buf.ptr);
+            for (ssize_t i = 0; i < use_n; ++i)
+            {
+                double ax = ptr[i * 2];
+                double ay = ptr[i * 2 + 1];
+
+                // clamp
+                if (ax > 1.0)
+                    ax = 1.0;
+                if (ax < -1.0)
+                    ax = -1.0;
+                if (ay > 1.0)
+                    ay = 1.0;
+                if (ay < -1.0)
+                    ay = -1.0;
+
+                double mag = std::sqrt(ax * ax + ay * ay);
+                if (mag < 1.0)
+                    mag = 1.0;
+                ax /= mag;
+                ay /= mag;
+
+                current_particle_velocities_[i * 2] = ax;
+                current_particle_velocities_[i * 2 + 1] = ay;
+                next_particle_positions_[i * 2] = current_particle_positions_[i * 2] + ax * delta_time;
+                next_particle_positions_[i * 2 + 1] = current_particle_positions_[i * 2 + 1] + ay * delta_time;
+            }
+        }
+        else
+        {
+            throw std::runtime_error("actions must be a 1D or 2D numpy array");
         }
     }
 
@@ -464,6 +553,7 @@ public:
         // print_vec(next_particle_positions_);
         //  Sets the particle's desired locations (normalized from action directions)
         double r = 0.0;
+        ++current_step;
 
         for (int i = 0; i < n_physics_steps_; ++i)
         {
@@ -502,13 +592,206 @@ public:
             std::string agent_id = "particle_" + std::to_string(i);
             rewards[py::str(agent_id)] = r;
             terminations[py::str(agent_id)] = term;
-            truncations[py::str(agent_id)] = false;
+            truncations[py::str(agent_id)] = (current_step >= truncate_after_steps_);
         }
 
         return py::make_tuple(global_state, observations, rewards, terminations, truncations);
     }
+
+    py::tuple step(py::array_t<double> actions)
+    {
+        ++current_step;
+        double r = 0.0;
+        for (int i = 0; i < n_physics_steps_; ++i)
+        {
+            set_naive_next_pos(actions);
+            move_things();
+            if (visit_all)
+                r += get_reward_all();
+            else
+                r += get_reward_one();
+        }
+        py::array_t<double> global_state = get_global_state();
+
+        bool term = false;
+        if (visit_all)
+            term = n_lm == 0;
+        else
+            term = n_active_boulders == 0;
+        bool trunc = current_step >= truncate_after_steps_;
+        return py::make_tuple(global_state, r, term, trunc);
+    }
 };
 
+class ThreadPool
+{
+public:
+    // Constructor: Creates a pool of 'num_threads' worker threads
+    ThreadPool(size_t num_threads) : stop_all(false)
+    {
+        for (size_t i = 0; i < num_threads; ++i)
+        {
+            // Create and detach threads, each running the 'worker_loop'
+            workers.emplace_back([this]
+                                 {
+                // Each worker runs an infinite loop waiting for tasks
+                while (true) {
+                    std::function<void()> task;
+
+                    // Acquire lock to safely access the task queue
+                    {
+                        std::unique_lock<std::mutex> lock(queue_mutex);
+                        
+                        // Wait until the queue is not empty OR the pool is stopping
+                        cv.wait(lock, [this]{
+                            return stop_all || !tasks.empty();
+                        });
+
+                        // If the pool is stopping AND the queue is empty, exit the thread
+                        if (stop_all && tasks.empty()) {
+                            return;
+                        }
+
+                        // Get the next task and remove it from the queue
+                        task = std::move(tasks.front());
+                        tasks.pop();
+                    } // Lock is automatically released here
+
+                    // Execute the task
+                    task();
+                } });
+        }
+    }
+
+    // Destructor: Stops all worker threads
+    ~ThreadPool()
+    {
+        // Signal to all threads to stop and wake up any waiting threads
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            stop_all = true;
+        }
+        cv.notify_all();
+
+        // Join all worker threads to ensure they finish execution
+        for (std::thread &worker : workers)
+        {
+            worker.join();
+        }
+    }
+
+    // Enqueues a new task (a function object) to the pool
+    void enqueue(std::function<void()> task)
+    {
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            tasks.emplace(std::move(task)); // Add the task to the queue
+        }
+        cv.notify_one(); // Wake up one waiting worker thread
+    }
+
+private:
+    std::vector<std::thread> workers;        // The thread pool
+    std::queue<std::function<void()>> tasks; // The thread-safe task queue
+
+    std::mutex queue_mutex;     // Mutex for synchronizing access to the queue
+    std::condition_variable cv; // Condition variable to wait/notify on new tasks
+    bool stop_all;              // Flag to indicate when threads should stop
+};
+
+class ParallelCoopPushEnvironment
+{
+private:
+    std::vector<CoopPushEnvironment> envs;
+    ThreadPool pool;
+
+public:
+    void init(
+        int num_envs = 32,
+        int num_threads = 4,
+        std::vector<double> particle_positions,
+        std::vector<double> boulder_positions,
+        std::vector<double> landmark_positions,
+        int n_physics_steps = 5,
+        bool sparse_rewards = true,
+        bool visit_all = true,
+        double sparse_weight = 5.0,
+        double dt = 0.1,
+        double boulder_weight = 5.0)
+    {
+        std::vector<CoopPushEnvironment> envs;
+        for (int i = 0; i < num_envs; ++i)
+        {
+            CoopPushEnvironment env;
+            env.init(particle_positions, boulder_positions, landmark_positions,
+                     n_physics_steps, sparse_rewards, visit_all, sparse_weight, dt, boulder_weight);
+            envs.push_back(env);
+        }
+        ThreadPool pool(num_threads);
+    }
+
+    // takes a list of actions dim (num_envs, num_particles, 2)
+    py::tuple step(py::array_t<double> actions)
+    {
+        auto buf = actions.request();
+        if (buf.ndim != 3)
+            throw std::runtime_error("actions must have shape (num_envs, num_particles, 2)");
+        ssize_t n_envs = buf.shape[0];
+        ssize_t n_particles = buf.shape[1];
+        ssize_t n_action_dims = buf.shape[2];
+        if (n_action_dims != 2)
+            throw std::runtime_error("actions last dimension must be 2");
+        if (n_envs != envs.size())
+            throw std::runtime_error("actions first dimension must match number of environments");
+        double *ptr = static_cast<double *>(buf.ptr);
+
+        std::vector<py::array_t<double>> states(n_envs);
+        std::vector<double> rewards(n_envs);
+        std::vector<bool> terms(n_envs);
+        std::vector<bool> truncs(n_envs);
+        for (ssize_t i = 0; i < n_envs; ++i)
+        {
+            py::array_t<double> act_view({n_particles, 2}, ptr + i * n_particles * 2);
+            pool.enqueue([this, i, &states, &rewards, &terms, &truncs, act_view]()
+                         {
+                auto result = envs[i].step(act_view);
+                states[i] = py::cast<py::array_t<double>>(result[0]);
+                rewards[i] = py::cast<double>(result[1]);
+                terms[i] = py::cast<bool>(result[2]);
+                truncs[i] = py::cast<bool>(result[3]); 
+                if (terms[i] || truncs[i]) {
+                    auto reset_result = envs[i].reset();
+                    states[i] = py::cast<py::array_t<double>>(reset_result[0]);
+                } });
+        }
+        pool.wait_all(); // Wait for all tasks to complete
+        py::array_t<double> states_array({n_envs, states[0].shape(0)}, nullptr);
+        double *s_ptr = static_cast<double *>(states_array.request().ptr);
+        for (ssize_t i = 0; i < n_envs; ++i)
+        {
+            std::memcpy(s_ptr + i * states[0].shape(0), states[i].data(), states[0].shape(0) * sizeof(double));
+        }
+        return py::make_tuple(states_array, py::cast(rewards), py::cast(terms), py::cast(truncs));
+    }
+    py::tuple reset()
+    {
+        ssize_t n_envs = envs.size();
+        std::vector<py::array_t<double>> states(n_envs);
+        for (ssize_t i = 0; i < n_envs; ++i)
+        {
+            pool.enqueue([this, i, &states]()
+                         { auto result = envs[i].reset(); states[i] = py::cast<py::array_t<double>>(result[0]); });
+        }
+        pool.wait_all(); // Wait for all tasks to complete
+        py::array_t<double> states_array({n_envs, states[0].shape(0)}, nullptr);
+        double *s_ptr = static_cast<double *>(states_array.request().ptr);
+        for (ssize_t i = 0; i < n_envs; ++i)
+        {
+            std::memcpy(s_ptr + i * states[0].shape(0), states[i].data(), states[0].shape(0) * sizeof(double));
+        }
+        return py::make_tuple(states_array);
+    }
+};
 // --- PYBIND11 MODULE DEFINITION ---
 // The first argument is the name of the module (e.g., import cooppush_cpp)
 // The second argument, 'm', is a variable of type py::module_ which is the main interface
@@ -534,5 +817,24 @@ PYBIND11_MODULE(cooppush_cpp, m)
              "Resets the environment to the initial state and returns (state, observations).")
         .def("step", &CoopPushEnvironment::step,
              "Steps the environment with a dictionary of actions.",
+             py::arg("actions"));
+
+    py::class_<ParallelCoopPushEnvironment>(m, "ParallelEnvironment")
+        .def(py::init<>()) // Expose the constructor
+        .def("init", &ParallelCoopPushEnvironment::init,
+             "Initializes the parallel environment with starting positions for all entities.",
+             py::arg("particle_positions"),
+             py::arg("boulder_positions"),
+             py::arg("landmark_positions"),
+             py::arg("n_physics_steps"),
+             py::arg("sparse_rewards"),
+             py::arg("visit_all"),
+             py::arg("sparse_weight"),
+             py::arg("dt") = 0.1,
+             py::arg("boulder_weight") = 5.0)
+        .def("reset", &ParallelCoopPushEnvironment::reset,
+             "Resets the parallel environment to the initial state and returns (state, observations).")
+        .def("step", &ParallelCoopPushEnvironment::step,
+             "Steps the parallel environment with a dictionary of actions.",
              py::arg("actions"));
 }

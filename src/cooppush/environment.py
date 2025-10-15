@@ -41,8 +41,8 @@ class CoopPushEnv(ParallelEnv):
         start_noise=0.0,
         cpp_steps_per_step=10,
         normalize_observations=True,
-        dt=0.1,
-        boulder_weight=5.0,
+        dt=0.2,
+        boulder_weight=4.0,
     ):
         super().__init__()
         self.boulder_weight = boulder_weight
