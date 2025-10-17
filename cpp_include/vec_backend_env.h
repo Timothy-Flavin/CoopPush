@@ -77,7 +77,8 @@ public:
                   int truncate_after_steps);
     ~VecBackendEnv();
     std::vector<double> reset();
-    void set_naive_next_pos(std::vector<double> &actions);
+    std::vector<double> get_global_state();
+    void set_naive_next_pos(const double *actions);
     void move_things();
     double get_reward_all();
     double get_reward_one();
