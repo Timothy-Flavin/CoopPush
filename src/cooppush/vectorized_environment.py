@@ -59,16 +59,9 @@ class CoopPushVectorizedEnv:
             env_setup["landmark_pos"], dtype=np.float64
         )
 
-        # Create C++ parallel environment
-        self.cpp_env = cooppush_cpp.ParallelEnvironment()
-
         # Initialize C++ vectorized env
         # Binding signature (per backend.cpp):
-        # init(num_envs, num_threads, particle_positions, boulder_positions, landmark_positions,
-        #      n_physics_steps, sparse_rewards, visit_all, sparse_weight, dt=0.1, boulder_weight=5.0)
-        self.cpp_env.init(
-            num_envs=self.num_envs,
-            num_threads=self.num_threads,
+        self.cpp_env = cooppush_cpp.ParallelEnvironment(
             particle_positions=self._initial_particle_pos,
             boulder_positions=self._initial_boulder_pos,
             landmark_positions=self._initial_landmark_pos,
@@ -78,7 +71,20 @@ class CoopPushVectorizedEnv:
             sparse_weight=self.sparse_weight,
             dt=self.dt,
             boulder_weight=self.boulder_weight,
+            num_envs=self.num_envs,
+            num_threads=self.num_threads,
         )
+        # std::vector<double> particle_positions,
+        # std::vector<double> boulder_positions,
+        # std::vector<double> landmark_positions,
+        # int n_physics_steps = 5,
+        # bool sparse_rewards = true,
+        # bool visit_all = true,
+        # double sparse_weight = 5.0,
+        # double dt = 0.1,
+        # double boulder_weight = 5.0,
+        # int num_envs = 32,
+        # int num_threads = 4
 
         # Precompute normalization vector if requested
         self._norm_array = None
@@ -119,7 +125,8 @@ class CoopPushVectorizedEnv:
         states: np.ndarray
             Array of shape (num_envs, state_dim) with the global state per environment.
         """
-        (states_array,) = self.cpp_env.reset()
+        print("python resetting")
+        states_array = self.cpp_env.reset()
         states = np.array(states_array, copy=True)
         if self.normalize_observations and self._norm_array is not None:
             states = states / self._norm_array[np.newaxis, :]
@@ -151,7 +158,7 @@ class CoopPushVectorizedEnv:
             actions.ndim == 3
             and actions.shape[1] == self.n_particles
             and actions.shape[2] == 2
-        ), "actions must have shape (num_envs, n_particles, 2)"
+        ), f"actions must have shape (num_envs={self.num_envs}, n_particles={self.n_particles}, 2) but had shape {actions.shape}"
 
         # Ensure double precision for C++ side; no copy if already contiguous float64
         actions_np = np.asarray(actions, dtype=np.float64)
