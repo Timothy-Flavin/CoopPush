@@ -1,3 +1,5 @@
+#pragma once
+
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h> // Needed for std::vector conversion
 #include <vector>
@@ -8,6 +10,7 @@
 #include <BaseTsd.h>
 using ssize_t = SSIZE_T;
 #endif
+namespace py = pybind11;
 struct StepResult
 {
     std::vector<double> observation;
@@ -53,14 +56,18 @@ private:
     int truncate_after_steps_ = 1000;
     int current_step = 0;
 
-    const double LANDMARK_R = 1.0;
-    const double BOULDER_R = 5.0;
-    const double PARTICLE_R = 1.0;
-    const double total_radius = BOULDER_R + PARTICLE_R;
-    const double total_radius_sq = total_radius * total_radius;
+    // Constants used by the environment. Make these static constexpr so they
+    // don't participate in the implicit copy/assignment operators of the
+    // class (which previously deleted the assignment operator and caused
+    // std::vector<VecBackendEnv> usages to fail).
+    static constexpr double LANDMARK_R = 1.0;
+    static constexpr double BOULDER_R = 5.0;
+    static constexpr double PARTICLE_R = 1.0;
+    static constexpr double total_radius = BOULDER_R + PARTICLE_R;
+    static constexpr double total_radius_sq = total_radius * total_radius;
 
-    const double TOTAL_BOULDER_R = 2.0 * BOULDER_R;
-    const double TOTAL_BOULDER_R_SQ = TOTAL_BOULDER_R * TOTAL_BOULDER_R;
+    static constexpr double TOTAL_BOULDER_R = 2.0 * BOULDER_R;
+    static constexpr double TOTAL_BOULDER_R_SQ = TOTAL_BOULDER_R * TOTAL_BOULDER_R;
     int global_state_size;
 
 public:
@@ -75,7 +82,7 @@ public:
                   double dt,
                   double boulder_weight,
                   int truncate_after_steps);
-    ~VecBackendEnv();
+    ~VecBackendEnv() {};
     std::vector<double> reset();
     std::vector<double> get_global_state();
     void set_naive_next_pos(const double *actions);

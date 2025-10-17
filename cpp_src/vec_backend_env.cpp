@@ -1,3 +1,6 @@
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h> // Needed for std::vector conversion
+#include <pybind11/numpy.h>
 #include "vec_backend_env.h"
 
 void VecBackendEnv::set_naive_next_pos(const double *actions)
@@ -230,6 +233,9 @@ double VecBackendEnv::get_reward_one()
     return r;
 }
 
+VecBackendEnv::VecBackendEnv()
+{
+}
 VecBackendEnv::VecBackendEnv(std::vector<double> particle_positions,
                              std::vector<double> boulder_positions,
                              std::vector<double> landmark_positions,

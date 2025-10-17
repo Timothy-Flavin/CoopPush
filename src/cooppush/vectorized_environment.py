@@ -8,7 +8,7 @@ import cooppush.cooppush_cpp as cooppush_cpp
 
 class CoopPushVectorizedEnv:
     """
-    Vectorized wrapper around the C++ ParallelEnvironment.
+    Vectorized wrapper around the C++ VectorizedEnvironment.
 
     - Manages N independent environments in C++.
     - Accepts actions as a numpy array with shape (n_envs, n_particles, 2).
@@ -24,6 +24,8 @@ class CoopPushVectorizedEnv:
         json_path: str = "default_push_level.json",
         num_envs: int = 32,
         num_threads: int = 4,
+        envs_per_job: int = 4,
+        truncate_after=500,
         cpp_steps_per_step: int = 10,
         sparse_rewards: bool = True,
         visit_all: bool = True,
@@ -61,7 +63,7 @@ class CoopPushVectorizedEnv:
 
         # Initialize C++ vectorized env
         # Binding signature (per backend.cpp):
-        self.cpp_env = cooppush_cpp.ParallelEnvironment(
+        self.cpp_env = cooppush_cpp.VectorizedEnvironment(
             particle_positions=self._initial_particle_pos,
             boulder_positions=self._initial_boulder_pos,
             landmark_positions=self._initial_landmark_pos,
@@ -71,8 +73,10 @@ class CoopPushVectorizedEnv:
             sparse_weight=self.sparse_weight,
             dt=self.dt,
             boulder_weight=self.boulder_weight,
-            num_envs=self.num_envs,
-            num_threads=self.num_threads,
+            truncate_after_steps=500,
+            n_threads=num_threads,
+            n_envs=num_envs,
+            envs_per_job=envs_per_job,
         )
         # std::vector<double> particle_positions,
         # std::vector<double> boulder_positions,

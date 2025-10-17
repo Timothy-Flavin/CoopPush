@@ -1,11 +1,12 @@
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h> // Needed for std::vector conversion
+#include <pybind11/numpy.h>
 #include "vectorized_environment.h"
+namespace py = pybind11;
 
 py::array_t<double> vec2d_to_pyarray(const std::vector<std::vector<double>> &vec)
 {
-    if (vec.empty())
-    {
-        return py::array_t<double>({0, 0});
-    }
+
     size_t rows = vec.size();
     size_t cols = vec[0].size();
     py::array_t<double> result({rows, cols});

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>     // Needed for std::vector conversion
 #include <pybind11/numpy.h>   // Needed for numpy array conversion
@@ -9,6 +11,7 @@
 #include <BaseTsd.h>
 using ssize_t = SSIZE_T;
 #endif
+namespace py = pybind11;
 
 class CoopPushEnvironment
 {
@@ -49,14 +52,14 @@ private:
     int truncate_after_steps_ = 1000;
     int current_step = 0;
 
-    const double LANDMARK_R = 1.0;
-    const double BOULDER_R = 5.0;
-    const double PARTICLE_R = 1.0;
-    const double total_radius = BOULDER_R + PARTICLE_R;
-    const double total_radius_sq = total_radius * total_radius;
+    static constexpr double LANDMARK_R = 1.0;
+    static constexpr double BOULDER_R = 5.0;
+    static constexpr double PARTICLE_R = 1.0;
+    static constexpr double total_radius = BOULDER_R + PARTICLE_R;
+    static constexpr double total_radius_sq = total_radius * total_radius;
 
-    const double TOTAL_BOULDER_R = 2.0 * BOULDER_R;
-    const double TOTAL_BOULDER_R_SQ = TOTAL_BOULDER_R * TOTAL_BOULDER_R;
+    static constexpr double TOTAL_BOULDER_R = 2.0 * BOULDER_R;
+    static constexpr double TOTAL_BOULDER_R_SQ = TOTAL_BOULDER_R * TOTAL_BOULDER_R;
 
     py::array_t<double> get_global_state();
     py::dict get_observations();

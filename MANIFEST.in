@@ -1,0 +1,11 @@
+include LICENSE
+include README.md
+include pyproject.toml
+include setup.py
+
+# Include all C++ sources and headers
+recursive-include cpp_src *.cpp *.h
+recursive-include cpp_include *.h
+
+# Include Python sources under src/
+recursive-include src *.py
