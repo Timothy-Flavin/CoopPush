@@ -75,6 +75,8 @@ PYBIND11_MODULE(cooppush_cpp, m)
 
          .def("reset", &VectorizedCoopPush::reset,
               "Resets the parallel environment to the initial state and returns (state, observations).")
+         .def("reset", &VectorizedCoopPush::reset_i,
+              "Resets the parallel environment to the initial state and returns (state, observations).")
          .def("step", &VectorizedCoopPush::step,
               "Steps the parallel environment with a numpy array of actions shaped (num_envs, num_particles, 2).",
               py::arg("actions"));

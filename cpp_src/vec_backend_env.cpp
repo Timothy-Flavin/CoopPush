@@ -253,6 +253,42 @@ VecBackendEnv::VecBackendEnv(std::vector<double> particle_positions,
     else
         visit_every_state_size = n_boulders;
     this->global_state_size = n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size;
+    // std::cout << "C++ init() called." << std::endl;
+    this->n_physics_steps_ = n_physics_steps;
+    this->truncate_after_steps_ = truncate_after_steps;
+    this->current_step = 0;
+    delta_time = dt;
+    this->visit_all = visit_all;
+    this->sparse_rewards = sparse_rewards;
+    this->sparse_weight = sparse_weight;
+    // Store the initial state so we can reset to it later
+    initial_particle_positions_ = particle_positions;
+    initial_boulder_positions_ = boulder_positions;
+    initial_landmark_positions_ = landmark_positions;
+
+    // Set the current state from the initial state
+    current_particle_positions_ = particle_positions;
+    current_boulder_positions_ = boulder_positions;
+    current_landmark_positions_ = landmark_positions;
+
+    next_particle_positions_ = particle_positions;
+    next_boulder_positions_ = boulder_positions;
+    next_landmark_positions_ = landmark_positions;
+
+    n_landmarks = static_cast<int>(initial_landmark_positions_.size() / 2);
+    n_boulders = static_cast<int>(initial_boulder_positions_.size() / 2);
+    n_particles = static_cast<int>(initial_particle_positions_.size() / 2);
+
+    current_boulder_velocities_.resize(initial_boulder_positions_.size(), 0.0);
+    current_particle_velocities_.resize(initial_particle_positions_.size(), 0.0);
+    std::fill(current_boulder_velocities_.begin(), current_boulder_velocities_.end(), 0);
+    std::fill(current_particle_velocities_.begin(), current_particle_velocities_.end(), 0);
+
+    landmark_pairs.resize(n_landmarks * n_boulders, false);
+    std::fill(landmark_pairs.begin(), landmark_pairs.end(), false);
+    finished_boulders.resize(n_boulders, false);
+    std::fill(finished_boulders.begin(), finished_boulders.end(), false);
+    num_particles_ = static_cast<int>(particle_positions.size() / 2);
 }
 
 StepResult VecBackendEnv::step(const double *actions)
@@ -292,10 +328,16 @@ std::vector<double> VecBackendEnv::reset()
     next_landmark_positions_ = initial_landmark_positions_;
     current_boulder_velocities_.resize(initial_boulder_positions_.size(), 0.0);
     current_particle_velocities_.resize(initial_particle_positions_.size(), 0.0);
+    // std::cout << "  vec backend resized velocities\n";
+
     std::fill(current_boulder_velocities_.begin(), current_boulder_velocities_.end(), 0);
     std::fill(current_particle_velocities_.begin(), current_particle_velocities_.end(), 0);
     // Prepare return values
+
+    // std::cout << "  fill successful\n";
     std::vector<double> global_state = get_global_state();
+
+    // std::cout << "  got global state\n";
     landmark_pairs.resize(n_landmarks * n_boulders, false);
     std::fill(landmark_pairs.begin(), landmark_pairs.end(), false);
     finished_boulders.resize(n_boulders, false);
@@ -304,6 +346,7 @@ std::vector<double> VecBackendEnv::reset()
     n_lm = 1;
     n_active_boulders = 1;
 
+    // std::cout << "  reset successful" << std::endl;
     return global_state;
 }
 // Public helper to access current global state as a plain vector (no NumPy types)
@@ -316,7 +359,7 @@ std::vector<double> VecBackendEnv::get_global_state()
     else
         visit_every_state_size = n_boulders;
 
-    // std::cout << "npart4: " << n_particles * 4 << " nb*2 " << n_boulders * 2 << " nlandmark2 " << n_landmarks * 2 << " vess " << visit_every_state_size << std::endl;
+    // std::cout << "    npart4: " << n_particles * 4 << " nb*2 " << n_boulders * 2 << " nlandmark2 " << n_landmarks * 2 << " vess " << visit_every_state_size << std::endl;
     std::vector<double> state_vec(n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size, 0);
 
     for (int p = 0; p < n_particles; ++p)
@@ -326,6 +369,7 @@ std::vector<double> VecBackendEnv::get_global_state()
         state_vec[p * 4 + 2] = current_particle_velocities_[p * 2];
         state_vec[p * 4 + 3] = current_particle_velocities_[p * 2 + 1];
     }
+    // std::cout << "    got particles" << std::endl;
     for (int b = 0; b < n_boulders; ++b)
     {
         state_vec[n_particles * 4 + 2 * b] = current_boulder_positions_[2 * b];

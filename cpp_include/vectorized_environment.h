@@ -45,5 +45,6 @@ public:
                        int envs_per_job);
     ~VectorizedCoopPush() {};
     py::array_t<double> reset();
+    py::array_t<double> reset_i(int i);
     py::tuple step(py::array_t<double> actions);
 };

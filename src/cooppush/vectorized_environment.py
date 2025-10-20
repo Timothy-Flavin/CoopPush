@@ -131,9 +131,18 @@ class CoopPushVectorizedEnv:
         """
         print("python resetting")
         states_array = self.cpp_env.reset()
+        print("python wrapper got states from cpp")
         states = np.array(states_array, copy=True)
         if self.normalize_observations and self._norm_array is not None:
             states = states / self._norm_array[np.newaxis, :]
+        return states
+
+    def reset_i(self, i):
+        states_array = self.cpp_env.reset_i(i)
+        print("python wrapper got states from cpp")
+        states = np.array(states_array, copy=True)
+        if self.normalize_observations and self._norm_array is not None:
+            states = states / self._norm_array[np.newaxis, i, :]
         return states
 
     def step(

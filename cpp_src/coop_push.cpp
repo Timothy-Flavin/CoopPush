@@ -84,9 +84,10 @@ void CoopPushEnvironment::init(
     double sparse_weight = 5.0,
     double dt = 0.1,
     double boulder_weight = 5.0,
-    int truncate_after_steps = 1000)
+    int truncate_after_steps = 200)
 {
-    // std::cout << "C++ init() called." << std::endl;
+    // std::cout << "\n\nC++ init() called.\n\n"
+    //           << std::endl;
     this->n_physics_steps_ = n_physics_steps;
     this->truncate_after_steps_ = truncate_after_steps;
     this->current_step = 0;
@@ -94,6 +95,7 @@ void CoopPushEnvironment::init(
     this->visit_all = visit_all;
     this->sparse_rewards = sparse_rewards;
     this->sparse_weight = sparse_weight;
+    this->boulder_weight = boulder_weight;
     // Store the initial state so we can reset to it later
     initial_particle_positions_ = particle_positions;
     initial_boulder_positions_ = boulder_positions;
@@ -127,7 +129,9 @@ void CoopPushEnvironment::init(
 // Resets the environment to the last initialized state.
 py::tuple CoopPushEnvironment::reset()
 {
-    // std::cout << "C++ reset() called." << std::endl;
+    // std::cout << "\n\n RESET BEING CALLED IN CPP \n\n"
+    //           << std::endl;
+    //  std::cout << "C++ reset() called." << std::endl;
     if (initial_particle_positions_.empty())
     {
         throw std::runtime_error("Environment must be initialized with init() before reset() can be called.");
@@ -486,10 +490,13 @@ double CoopPushEnvironment::get_reward_one()
 
 py::tuple CoopPushEnvironment::step(py::dict actions)
 {
-    // std::cout << "C++ step() called." << std::endl;
-    // print_vec(current_particle_positions_);
-    // print_vec(next_particle_positions_);
-    //  Sets the particle's desired locations (normalized from action directions)
+    // std::cout << "C++ step() called. Current positions before: ";
+    // for (int p = 0; p < std::min(2, n_particles); ++p)
+    // {
+    //     std::cout << "p" << p << ":(" << current_particle_positions_[p * 2] << "," << current_particle_positions_[p * 2 + 1] << ") ";
+    // }
+    // std::cout << std::endl;
+    // Sets the particle's desired locations (normalized from action directions)
     double r = 0.0;
     ++current_step;
 
@@ -503,16 +510,12 @@ py::tuple CoopPushEnvironment::step(py::dict actions)
             r += get_reward_one();
     }
 
-    // std::cout << "After next pos: \n";
-    // print_vec(current_particle_positions_);
-    // print_vec(next_particle_positions_);
-
-    // After handling boulder collisions / movement, sets the particles actual locations
-
-    // std::cout << "After move things: \n";
-    // print_vec(current_particle_positions_);
-    // print_vec(next_particle_positions_);
-    //  Reward of 1 for each boulder that collides with a landmark for the first time
+    // std::cout << "After physics loop. Current positions: ";
+    // for (int p = 0; p < std::min(2, n_particles); ++p)
+    // {
+    //     std::cout << "p" << p << ":(" << current_particle_positions_[p * 2] << "," << current_particle_positions_[p * 2 + 1] << ") ";
+    // }
+    // std::cout << std::endl;
 
     py::array_t<double> global_state = get_global_state();
     py::dict observations = get_observations();

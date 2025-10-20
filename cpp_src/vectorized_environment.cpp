@@ -21,6 +21,20 @@ py::array_t<double> vec2d_to_pyarray(const std::vector<std::vector<double>> &vec
     return result;
 }
 
+// Convert a std::vector<double> (1D) to a py::array_t<double>
+py::array_t<double> vec1d_to_pyarray(const std::vector<double> &vec)
+{
+    // Create a 1D NumPy array with the same length as the vector
+    py::array_t<double> result(vec.size());
+    // Use a mutable view to write data efficiently
+    auto buffer = result.mutable_unchecked<1>();
+    for (size_t i = 0; i < vec.size(); ++i)
+    {
+        buffer(i) = vec[i];
+    }
+    return result;
+}
+
 VectorizedCoopPush::VectorizedCoopPush()
 {
 }
@@ -64,11 +78,19 @@ VectorizedCoopPush::VectorizedCoopPush(std::vector<double> particle_positions,
 }
 py::array_t<double> VectorizedCoopPush::reset()
 {
+    std::cout << "C++ Vec ENV manager resetting" << std::endl;
     for (int i = 0; i < this->n_envs; ++i)
     {
+        std::cout << "  resetting env: " << i << " of " << this->n_envs << std::endl;
         this->global_state_vecs[i] = this->envs[i].reset();
     }
     return vec2d_to_pyarray(this->global_state_vecs);
+}
+
+py::array_t<double> VectorizedCoopPush::reset_i(int i)
+{
+    this->global_state_vecs[i] = this->envs[i].reset();
+    return vec1d_to_pyarray(this->global_state_vecs[i]);
 }
 
 void step_job(
