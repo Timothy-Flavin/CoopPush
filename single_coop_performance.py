@@ -270,7 +270,8 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
 
     print("Starting pure environment speed test...")
     # Single C++ environment
-    obs = env.reset()
+    obs: np.ndarray = env.reset()
+    print(f"obs shape: {obs.shape}")
     r_hist = []
     for i in range(n_envs):
         r_hist.append([0])
@@ -278,9 +279,9 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
     # print(obs)
 
     start_time = time.time()
-    torch_obs = torch.from_numpy(obs).float().unsqueeze(1).to("cuda")
+    torch_obs = torch.from_numpy(obs).float().unsqueeze(0).to("cuda")
     for _ in range(num_steps):
-        print(f"torch obs shape: {torch_obs}")
+        # print(f"torch obs shape: {torch_obs.shape}")
         with torch.no_grad():
             if random.random() > _ / num_steps:
                 raw_actions = torch.randint(
@@ -303,7 +304,7 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
             for a in range(4):
                 env_actions[e, a] = d_to_c_map[raw_actions[e, a]]
         next_obs, reward, terminated, truncated = env.step(env_actions)
-        next_torch_obs = torch.from_numpy(next_obs).float().unsqueeze(1).to("cuda")
+        next_torch_obs = torch.from_numpy(next_obs).float().unsqueeze(0).to("cuda")
         # env.render()
         # pygame.event.clear()
         for e in range(n_envs):
@@ -333,14 +334,15 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
         if current_idx == 10000:
             current_idx = 0
 
+        if terminated[0] or truncated[0]:
+            print(
+                f"ep reward env{0}: {r_hist[0][-1]}, steps / sec: {_*N_ENV / (time.time()-start_time):0.3f}"
+            )
+
         for e in range(n_envs):
             if terminated[e] or truncated[e]:
-                print(
-                    f"ep reward env{e}: {r_hist[e][-1]}, steps / sec: {_ / (time.time()-start_time):0.3f}"
-                )
                 r_hist[e].append(0.0)
-                print("terminated or truncated so resetting")
-                torch_obs[e] = env.reset_i(e)
+                torch_obs[:, e] = torch.from_numpy(env.reset_i(e)).to("cuda")
 
     end_time = time.time()
     single_cpp_duration = end_time - start_time
@@ -360,11 +362,11 @@ def training_and_env_speed(num_steps=10000):
 
     # _old_env_gpu(env=cpp_single_env, d_to_c_map=d_to_c_map, num_steps=10000)
 
-    _new_env_gpu(cpp_vec1_env, d_to_c_map, n_envs=1, n_threads=1, num_steps=10000)
+    # _new_env_gpu(cpp_vec1_env, d_to_c_map, n_envs=1, n_threads=1, num_steps=10000)
     _new_env_gpu(
-        cpp_vec1_env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=10000
+        cpp_vec_env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=10000
     )
-
+    exit()
     # Vectorized C++ environment with 1 env
     print("Starting vec1 environment speed test...")
     cpp_vec1_env.reset()
