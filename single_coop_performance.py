@@ -8,8 +8,8 @@ import pygame
 import matplotlib.pyplot as plt
 import random
 
-N_ENV = 512
-N_THREADS = 8
+N_ENV = 1024
+N_THREADS = 6
 
 d_to_c_map = [
     [0.0, 0.0],
@@ -157,7 +157,7 @@ def update_model(
     #     f"obs shape: {obs[idx].shape} model(obs) shape: {model(obs[idx]).shape} action shape: {actions[idx].unsqueeze(-1).shape}"
     # )
     q_now = model(obs[idx]).gather(index=actions[idx].unsqueeze(-1), dim=-1).squeeze(-1)
-    # print(f"Startint model update with q now shape {q_now.shape}")
+    # print(f"Starting model update with q now shape {q_now.shape}")
 
     with torch.no_grad():
         q_next = model(next_obs[idx])
@@ -325,7 +325,7 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
                     terminated_buffer,
                     actions_buffer,
                     model,
-                    batch_size=8,
+                    batch_size=2,
                     max_idx=min(_, 10000),
                     model_opt=model_opt,
                 )
@@ -351,12 +351,12 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
     print(
         f"Single C++ environment: {num_steps} steps in {single_cpp_duration:.2f} seconds ({num_steps/single_cpp_duration:.2f} steps/sec)"
     )
-    plt.plot(r_hist)
-    plt.title("reward history traditional env")
-    plt.show()
-    plt.plot(l_hist)
-    plt.title("loss hist traditional env")
-    plt.show()
+    # plt.plot(r_hist)
+    # plt.title("reward history traditional env")
+    # plt.show()
+    # plt.plot(l_hist)
+    # plt.title("loss hist traditional env")
+    # plt.show()
 
 
 def training_and_env_speed(num_steps=10000):
