@@ -8,8 +8,8 @@ import pygame
 import matplotlib.pyplot as plt
 import random
 
-N_ENV = 64
-N_THREADS = 4
+N_ENV = 512
+N_THREADS = 8
 
 d_to_c_map = [
     [0.0, 0.0],
@@ -53,6 +53,7 @@ cpp_vec_env = cooppushvec.CoopPushVectorizedEnv(
     dt=0.2,
     boulder_weight=1.0,
     normalize_observations=False,
+    envs_per_job=8,
 )
 
 cpp_single_env = cooppush_cpp.CoopPushEnv(
@@ -315,7 +316,7 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
         terminated_buffer[current_idx] = torch.from_numpy(terminated).to("cuda")
         actions_buffer[current_idx] = raw_actions
 
-        if current_idx > 128:
+        if current_idx > 32:
             l_hist.append(
                 update_model(
                     obs_buffer,
@@ -324,11 +325,12 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
                     terminated_buffer,
                     actions_buffer,
                     model,
-                    batch_size=128,
+                    batch_size=8,
                     max_idx=min(_, 10000),
                     model_opt=model_opt,
                 )
             )
+            print(l_hist[-1])
         torch_obs = next_torch_obs
         current_idx += 1
         if current_idx == 10000:
