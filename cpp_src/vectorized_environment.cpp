@@ -67,38 +67,49 @@ VectorizedCoopPush::VectorizedCoopPush(std::vector<double> particle_positions,
             sparse_weight,
             dt,
             boulder_weight,
-            truncate_after_steps));
+            truncate_after_steps,
+            i));
     }
     assert(!this->envs.empty());
     this->env_obs_size = this->envs.at(0).state_size();
-    this->global_state_vecs.resize(n_envs, std::vector<double>(this->env_obs_size));
-    this->rewards.resize(n_envs, 0.0);
-    this->truncateds.resize(n_envs, false);
-    this->terminateds.resize(n_envs, false);
+    // this->global_state_vecs.resize(n_envs, std::vector<double>(this->env_obs_size));
+    // this->rewards.resize(n_envs, 0.0);
+    // this->truncateds.resize(n_envs, false);
+    // this->terminateds.resize(n_envs, false);
 }
-py::array_t<double> VectorizedCoopPush::reset()
+void VectorizedCoopPush::reset(py::array_t<double> global_state)
 {
+    auto obs_buf = global_state.request();
+    double *obs_ptr = (double *)obs_buf.ptr;
     std::cout << "C++ Vec ENV manager resetting" << std::endl;
     for (int i = 0; i < this->n_envs; ++i)
     {
         std::cout << "  resetting env: " << i << " of " << this->n_envs << std::endl;
-        this->global_state_vecs[i] = this->envs[i].reset();
+        // this->global_state_vecs[i] = this->envs[i].reset();
+        this->envs[i].reset(obs_ptr); // std::vector<double> new_obs =
+        // double *env_obs_slice = obs_ptr + (i * this->env_obs_size);
+        // std::memcpy(env_obs_slice, new_obs.data(), this->env_obs_size * sizeof(double));
     }
-    return vec2d_to_pyarray(this->global_state_vecs);
+    // return vec2d_to_pyarray(this->global_state_vecs);
 }
 
-py::array_t<double> VectorizedCoopPush::reset_i(int i)
+void VectorizedCoopPush::reset_i(int i, py::array_t<double> global_state)
 {
-    this->global_state_vecs[i] = this->envs[i].reset();
-    return vec1d_to_pyarray(this->global_state_vecs[i]);
+    auto obs_buf = global_state.request();
+    double *obs_ptr = (double *)obs_buf.ptr;
+    // this->global_state_vecs[i] = this->envs[i].reset();
+    // return vec1d_to_pyarray(this->global_state_vecs[i]);
+    this->envs[i].reset(obs_ptr);
+    // double *env_obs_slice = obs_ptr + (i * this->env_obs_size);
+    // std::memcpy(env_obs_slice, new_obs.data(), this->env_obs_size * sizeof(double));
 }
 
 void step_job(
     py::array_t<double, py::array::c_style | py::array::forcecast> &actions,
-    std::vector<std::vector<double>> &observations,
-    std::vector<double> &rewards,
-    std::vector<bool> &terminateds,
-    std::vector<bool> &truncateds,
+    double *obs_ptr,
+    double *rewards_ptr,
+    bool *terminateds_ptr,
+    bool *truncateds_ptr,
     std::vector<VecBackendEnv> &envs,
     ssize_t start_i,
     ssize_t end_i)
@@ -110,43 +121,53 @@ void step_job(
     {
         const double *action_ptr = actions_acc.data(i, 0, 0);
         // Call the step function on the individual environment backend
-        StepResult result = envs[i].step(action_ptr);
+        envs[i].step(action_ptr, obs_ptr, rewards_ptr, terminateds_ptr, truncateds_ptr);
 
-        // Store the results in the correct slice of the global vectors
-        observations[i] = result.observation;
-        rewards[i] = result.reward;
-        terminateds[i] = result.terminated;
-        truncateds[i] = result.truncated;
+        // // Store the results in the correct slice of the global vectors
+        // observations[i] = result.observation;
+        // rewards[i] = result.reward;
+        // terminateds[i] = result.terminated;
+        // truncateds[i] = result.truncated;
     }
 }
 
-py::tuple VectorizedCoopPush::step(py::array_t<double> actions)
+void VectorizedCoopPush::step(py::array_t<double> actions, py::array_t<double> obs_buffer, py::array_t<double> rewards_buffer, py::array_t<bool> terminated_buffer, py::array_t<bool> truncated_buffer)
 {
     // Ensure the numpy array is in a C-style contiguous layout for safe pointer access.
     auto actions_cstyle = py::array_t<double, py::array::c_style | py::array::forcecast>(actions);
+    auto obs_buf = obs_buffer.request();
+    double *obs_ptr = (double *)obs_buf.ptr;
 
+    auto rewards_buf = rewards_buffer.request();
+    double *rewards_ptr = (double *)rewards_buf.ptr;
+
+    auto terminated_buf = terminated_buffer.request();
+    bool *terminated_ptr = (bool *)terminated_buf.ptr;
+
+    auto truncated_buf = truncated_buffer.request();
+    bool *truncated_ptr = (bool *)truncated_buf.ptr;
     // Dispatch jobs to the thread pool, dividing the work into chunks.
     for (ssize_t i = 0; i < this->n_envs; i += this->envs_per_job)
     {
         const ssize_t start_i = i;
         const ssize_t end_i = std::min(i + (ssize_t)this->envs_per_job, (ssize_t)this->n_envs);
 
-        this->pool.enqueue([this, &actions_cstyle, start_i, end_i]
+        this->pool.enqueue([this, &actions_cstyle, obs_ptr, rewards_ptr, terminated_ptr, truncated_ptr, start_i, end_i]
                            { step_job(
                                  actions_cstyle,
-                                 this->global_state_vecs,
-                                 this->rewards,
-                                 this->terminateds,
-                                 this->truncateds,
+                                 obs_ptr,
+                                 rewards_ptr,
+                                 terminated_ptr,
+                                 truncated_ptr,
                                  this->envs,
                                  start_i,
                                  end_i); });
     }
 
     this->pool.wait_all();
-    return py::make_tuple(
-        py::cast(this->global_state_vecs),
-        py::cast(this->rewards),
-        py::cast(this->terminateds),
-        py::cast(this->truncateds));
+    // return py::make_tuple(
+    //     py::cast(this->global_state_vecs),
+    //     py::cast(this->rewards),
+    //     py::cast(this->terminateds),
+    //     py::cast(this->truncateds));
 }

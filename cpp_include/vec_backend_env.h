@@ -69,6 +69,7 @@ private:
     static constexpr double TOTAL_BOULDER_R = 2.0 * BOULDER_R;
     static constexpr double TOTAL_BOULDER_R_SQ = TOTAL_BOULDER_R * TOTAL_BOULDER_R;
     int global_state_size;
+    const int my_index;
 
 public:
     VecBackendEnv();
@@ -81,15 +82,16 @@ public:
                   double sparse_weight,
                   double dt,
                   double boulder_weight,
-                  int truncate_after_steps);
+                  int truncate_after_steps,
+                  const int idx);
     ~VecBackendEnv() {};
-    std::vector<double> reset();
-    std::vector<double> get_global_state();
+    void reset(double *global_state_ptr);
+    void get_global_state(double *global_state_ptr);
     void set_naive_next_pos(const double *actions);
     void move_things();
     double get_reward_all();
     double get_reward_one();
     int state_size();
     int get_num_particles() { return this->n_particles; };
-    StepResult step(const double *actions);
+    void step(const double *actions, double *obs_ptr, double *rewards_ptr, bool *terminateds_ptr, bool *truncateds_ptr);
 };

@@ -233,7 +233,7 @@ double VecBackendEnv::get_reward_one()
     return r;
 }
 
-VecBackendEnv::VecBackendEnv()
+VecBackendEnv::VecBackendEnv() : my_index(0)
 {
 }
 VecBackendEnv::VecBackendEnv(std::vector<double> particle_positions,
@@ -245,7 +245,8 @@ VecBackendEnv::VecBackendEnv(std::vector<double> particle_positions,
                              double sparse_weight,
                              double dt,
                              double boulder_weight,
-                             int truncate_after_steps)
+                             int truncate_after_steps,
+                             const int idx) : my_index(idx)
 {
     int visit_every_state_size = 0;
     if (visit_all)
@@ -291,7 +292,7 @@ VecBackendEnv::VecBackendEnv(std::vector<double> particle_positions,
     num_particles_ = static_cast<int>(particle_positions.size() / 2);
 }
 
-StepResult VecBackendEnv::step(const double *actions)
+void VecBackendEnv::step(const double *actions, double *obs_ptr, double *rewards_ptr, bool *terminateds_ptr, bool *truncateds_ptr)
 {
     ++current_step;
     double r = 0.0;
@@ -304,7 +305,7 @@ StepResult VecBackendEnv::step(const double *actions)
         else
             r += get_reward_one();
     }
-    std::vector<double> global_state = get_global_state();
+    // std::vector<double> global_state = get_global_state();
 
     bool term = false;
     if (visit_all)
@@ -313,10 +314,15 @@ StepResult VecBackendEnv::step(const double *actions)
         term = n_active_boulders == 0;
     bool trunc = current_step >= truncate_after_steps_;
 
-    return StepResult{global_state, r, term, trunc};
+    get_global_state(obs_ptr);
+    rewards_ptr[my_index * sizeof(double)] = r;
+    terminateds_ptr[my_index * sizeof(bool)] = term;
+    truncateds_ptr[my_index * sizeof(bool)] = trunc;
+    // TODO: actually copy the results in
+    //  return StepResult{global_state, r, term, trunc};
 }
 
-std::vector<double> VecBackendEnv::reset()
+void VecBackendEnv::reset(double *global_state_ptr)
 {
     // Reset current state to the stored initial state
     this->current_step = 0;
@@ -328,30 +334,21 @@ std::vector<double> VecBackendEnv::reset()
     next_landmark_positions_ = initial_landmark_positions_;
     current_boulder_velocities_.resize(initial_boulder_positions_.size(), 0.0);
     current_particle_velocities_.resize(initial_particle_positions_.size(), 0.0);
-    // std::cout << "  vec backend resized velocities\n";
-
     std::fill(current_boulder_velocities_.begin(), current_boulder_velocities_.end(), 0);
     std::fill(current_particle_velocities_.begin(), current_particle_velocities_.end(), 0);
-    // Prepare return values
-
-    // std::cout << "  fill successful\n";
-    std::vector<double> global_state = get_global_state();
-
-    // std::cout << "  got global state\n";
     landmark_pairs.resize(n_landmarks * n_boulders, false);
     std::fill(landmark_pairs.begin(), landmark_pairs.end(), false);
     finished_boulders.resize(n_boulders, false);
     std::fill(finished_boulders.begin(), finished_boulders.end(), false);
-
     n_lm = 1;
     n_active_boulders = 1;
+    get_global_state(global_state_ptr);
 
     // std::cout << "  reset successful" << std::endl;
-    return global_state;
 }
 // Public helper to access current global state as a plain vector (no NumPy types)
 
-std::vector<double> VecBackendEnv::get_global_state()
+void VecBackendEnv::get_global_state(double *global_state_ptr)
 {
     int visit_every_state_size = 0;
     if (this->visit_all)
@@ -360,7 +357,8 @@ std::vector<double> VecBackendEnv::get_global_state()
         visit_every_state_size = n_boulders;
 
     // std::cout << "    npart4: " << n_particles * 4 << " nb*2 " << n_boulders * 2 << " nlandmark2 " << n_landmarks * 2 << " vess " << visit_every_state_size << std::endl;
-    std::vector<double> state_vec(n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size, 0);
+    // std::vector<double> state_vec(n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size, 0);
+    double *state_vec = global_state_ptr + this->global_state_size * my_index * sizeof(double);
 
     for (int p = 0; p < n_particles; ++p)
     {
@@ -394,7 +392,7 @@ std::vector<double> VecBackendEnv::get_global_state()
             state_vec[n_particles * 4 + 2 * n_boulders + 2 * n_landmarks + v] = finished_boulders[v];
         }
     }
-    return state_vec;
+    // return state_vec;
 }
 
 int VecBackendEnv::state_size()
