@@ -80,12 +80,19 @@ class CoopPushVectorizedEnv:
         )
 
         # Precompute normalization vector if requested
+
         self._norm_array = None
         if self.normalize_observations:
             v_every_size = (
                 self.n_boulders * self.n_landmarks
                 if self.visit_all
                 else self.n_boulders
+            )
+            print(
+                f"n boulder: {self.n_boulders} nlandmark: {self.n_landmarks}, vevery: {self.visit_all} size: {v_every_size}"
+            )
+            print(
+                f"npart: {self.n_particles} nb: {self.n_boulders} nl: {self.n_landmarks}"
             )
             state_dim = (
                 self.n_particles * 4
@@ -162,7 +169,6 @@ class CoopPushVectorizedEnv:
         if self.normalize_observations and self._norm_array is not None:
             obs = obs / self._norm_array[np.newaxis, :]
 
-        self.active_buffer = 1 - self.active_buffer
         return obs, reward, term, trunc
 
     def close(self) -> None:
@@ -173,8 +179,7 @@ class CoopPushVectorizedEnv:
         obs = self.cpp_env.reset_i(i)
         if self.normalize_observations and self._norm_array is not None:
             obs[i * self.state_dim : (i + 1) * self.state_dim] = (
-                obs[i * self.state_dim : (i + 1) * self.state_dim]
-                / self._norm_array[np.newaxis, i, :]
+                obs[i * self.state_dim : (i + 1) * self.state_dim] / self._norm_array
             )
         return states
 
@@ -208,12 +213,17 @@ if __name__ == "__main__":
     torch_states = torch.from_numpy(states).to("cuda")
     for i in range(5):
         next_states, rewards, terms, truncs = env.step(actions)
+        if i == 2:
+            terms[2] = True
+        if i == 3:
+            truncs[3] = True
         torch_next_states = torch.from_numpy(next_states).to("cuda")
 
         state_buff[i] = torch_states
         next_state_buff[i] = torch_next_states
         reward_buff[i] = torch.from_numpy(rewards).to("cuda")
         term_buff[i] = torch.from_numpy(terms).to("cuda")
+        trunc_buff[i] = torch.from_numpy(truncs).to("cuda")
 
         for e in range(N_ENV):
             if terms[e] or truncs[e]:
@@ -235,3 +245,6 @@ if __name__ == "__main__":
         print(f"  term buffer: {term_buff}")
         print(f"  trunc buffer: {trunc_buff}")
         print("\n\n")
+        input("next step")
+        torch_states = torch_next_states
+        # states = next_states

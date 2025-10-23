@@ -5,6 +5,7 @@
 #include <BaseTsd.h>
 using ssize_t = SSIZE_T;
 #endif
+#include "aligner.h"
 
 namespace py = pybind11;
 
@@ -102,25 +103,4 @@ py::array_t<double> create_aligned_double_buffer_2d(ssize_t dim1, ssize_t dim2)
         static_cast<double *>(ptr),              // Pointer to flat data
         deleter                                  // "Base" object
     );
-}
-// --- Pybind11 Module Definition ---
-// (Replace 'my_allocator' with your desired module name)
-PYBIND11_MODULE(aligned_numpy_allocator, m)
-{
-    m.doc() = "Module with cache-line-aligned memory allocators for NumPy";
-
-    // You can also expose the alignment size to Python
-    m.attr("CACHE_LINE_SIZE") = py::int_(CACHE_LINE_ALIGNMENT);
-
-    m.def("create_aligned_double_buffer", &create_aligned_double_buffer,
-          py::arg("num_elements"),
-          "Creates a 1D NumPy array (float64) with cache-line alignment.");
-
-    m.def("create_aligned_bool_buffer", &create_aligned_bool_buffer,
-          py::arg("num_elements"),
-          "Creates a 1D NumPy array (bool) with cache-line alignment.");
-
-    m.def("create_aligned_double_buffer_2d", &create_aligned_double_buffer_2d,
-          py::arg("num_elements"),
-          "Creates a 2D NumPy array (float64) with cache-line alignment.");
 }

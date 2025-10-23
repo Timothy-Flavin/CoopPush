@@ -2,7 +2,7 @@
 #include <pybind11/stl.h> // Needed for std::vector conversion
 #include <pybind11/numpy.h>
 #include "vectorized_environment.h"
-#include "aligner.cpp"
+#include "aligner.h"
 namespace py = pybind11;
 
 py::array_t<double> vec2d_to_pyarray(const std::vector<std::vector<double>> &vec)
@@ -77,19 +77,23 @@ VectorizedCoopPush::VectorizedCoopPush(std::vector<double> particle_positions,
 
     m_buffer_1 = create_aligned_double_buffer_2d(m_n_envs, m_env_obs_size);
     m_buffer_2 = create_aligned_double_buffer_2d(m_n_envs, m_env_obs_size);
-    m_rewards = create_aligned_double_buffer(n_envs);
+    m_rewards = create_aligned_double_buffer(m_n_envs);
     m_terminateds = create_aligned_bool_buffer(m_n_envs);
     m_truncateds = create_aligned_bool_buffer(m_n_envs);
 
     m_current_obs = m_buffer_1;
     m_next_obs = m_buffer_2;
+
+    // std::cout << "m1: " << m_buffer_1 << " m2: " << m_buffer_2 << " current: " << m_current_obs << " next: " << m_next_obs << std::endl;
 }
 py::array_t<double> VectorizedCoopPush::reset()
 {
     double *obs_ptr = m_next_obs.mutable_data();
+    std::cout << "this observation size: " << m_env_obs_size << " with obs buffer shape: " << m_next_obs.shape() << "\n";
     for (int i = 0; i < m_n_envs; ++i)
     {
-        this->m_envs[i].reset(obs_ptr + this->m_env_obs_size * i * sizeof(double));
+        // Pointer arithmetic is in elements, not bytes: do NOT multiply by sizeof(double)
+        this->m_envs[i].reset(obs_ptr + this->m_env_obs_size * i);
     }
     // Return the buffer that is now filled with the first obs
     return m_next_obs;
@@ -98,7 +102,8 @@ py::array_t<double> VectorizedCoopPush::reset()
 py::array_t<double> VectorizedCoopPush::reset_i(int i)
 {
     double *obs_ptr = m_next_obs.mutable_data();
-    this->m_envs[i].reset(obs_ptr + this->m_env_obs_size * i * sizeof(double));
+    // Pointer arithmetic is in elements, not bytes
+    this->m_envs[i].reset(obs_ptr + this->m_env_obs_size * i);
     return m_next_obs;
 }
 
@@ -121,10 +126,11 @@ void step_job(
         const double *action_ptr = actions_acc.data(i, 0, 0);
         envs[i].step(
             action_ptr,
-            obs_ptr + obs_size * i * sizeof(double),
-            rewards_ptr + i * sizeof(double),
-            terminateds_ptr + i * sizeof(bool),
-            truncateds_ptr + i * sizeof(bool));
+            // Offsets are in elements, not bytes
+            obs_ptr + obs_size * i,
+            rewards_ptr + i,
+            terminateds_ptr + i,
+            truncateds_ptr + i);
     }
 }
 
@@ -132,6 +138,7 @@ std::tuple<py::array_t<double>, py::array_t<double>, py::array_t<bool>, py::arra
 {
     // Ensure the numpy array is in a C-style contiguous layout for safe pointer access.
     std::swap(m_current_obs, m_next_obs); // current obs has presumable been saved at this point
+    // std::cout << "Step: m1: " << m_buffer_1 << " m2: " << m_buffer_2 << " current: " << m_current_obs << " next: " << m_next_obs << std::endl;
     auto actions_cstyle = py::array_t<double, py::array::c_style | py::array::forcecast>(actions);
     double *obs_ptr = m_next_obs.mutable_data();
     double *rewards_ptr = m_rewards.mutable_data();
