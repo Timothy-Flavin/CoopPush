@@ -247,12 +247,7 @@ VecBackendEnv::VecBackendEnv(std::vector<double> particle_positions,
                              double boulder_weight,
                              int truncate_after_steps)
 {
-    int visit_every_state_size = 0;
-    if (visit_all)
-        visit_every_state_size = n_boulders * n_landmarks;
-    else
-        visit_every_state_size = n_boulders;
-    this->global_state_size = n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size;
+
     // std::cout << "C++ init() called." << std::endl;
     this->n_physics_steps_ = n_physics_steps;
     this->truncate_after_steps_ = truncate_after_steps;
@@ -289,6 +284,13 @@ VecBackendEnv::VecBackendEnv(std::vector<double> particle_positions,
     finished_boulders.resize(n_boulders, false);
     std::fill(finished_boulders.begin(), finished_boulders.end(), false);
     num_particles_ = static_cast<int>(particle_positions.size() / 2);
+
+    int visit_every_state_size = 0;
+    if (visit_all)
+        visit_every_state_size = n_boulders * n_landmarks;
+    else
+        visit_every_state_size = n_boulders;
+    this->global_state_size = n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size;
 }
 
 StepResult VecBackendEnv::step(const double *actions)
