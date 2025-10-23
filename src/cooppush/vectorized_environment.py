@@ -80,7 +80,6 @@ class CoopPushVectorizedEnv:
         )
 
         # Precompute normalization vector if requested
-
         self._norm_array = None
         if self.normalize_observations:
             v_every_size = (
@@ -101,7 +100,8 @@ class CoopPushVectorizedEnv:
                 + v_every_size
             )
             self.state_dim = state_dim
-            norm_array = np.ones(state_dim, dtype=np.float32)
+            # Match C++ dtype (double) so in-place ops don't force copies
+            norm_array = np.ones(state_dim, dtype=np.float64)
             for i in range(self.n_particles):
                 norm_array[i * 4] = 25.0
                 norm_array[i * 4 + 1] = 25.0
@@ -128,9 +128,9 @@ class CoopPushVectorizedEnv:
         """
         print("python resetting")
         obs = self.cpp_env.reset()
-        # print("python wrapper got states from cpp")
+        # If normalizing, do it in-place to preserve reference to C++ buffer
         if self.normalize_observations and self._norm_array is not None:
-            obs = obs / self._norm_array[np.newaxis, :]
+            np.divide(obs, self._norm_array[np.newaxis, :], out=obs, casting="unsafe")
         return obs
 
     def step(
@@ -165,10 +165,9 @@ class CoopPushVectorizedEnv:
         actions_np = np.asarray(actions, dtype=np.float64)
         # states_array, rewards, terminations, truncations = self.cpp_env.step(actions_np)
         obs, reward, term, trunc = self.cpp_env.step(actions_np)
-
         if self.normalize_observations and self._norm_array is not None:
-            obs = obs / self._norm_array[np.newaxis, :]
-
+            # In-place to keep sharing C++ buffer
+            np.divide(obs, self._norm_array[np.newaxis, :], out=obs, casting="unsafe")
         return obs, reward, term, trunc
 
     def close(self) -> None:
@@ -176,12 +175,12 @@ class CoopPushVectorizedEnv:
         pass
 
     def reset_i(self, i):
+        # Returns a view of the i-th environment's state (1D), still referencing C++ memory
         obs = self.cpp_env.reset_i(i)
         if self.normalize_observations and self._norm_array is not None:
-            obs[i * self.state_dim : (i + 1) * self.state_dim] = (
-                obs[i * self.state_dim : (i + 1) * self.state_dim] / self._norm_array
-            )
-        return states
+            # Normalize only the i-th row in-place, preserving reference semantics
+            np.divide(obs[i], self._norm_array, out=obs[i], casting="unsafe")
+        return obs[i]
 
 
 if __name__ == "__main__":
