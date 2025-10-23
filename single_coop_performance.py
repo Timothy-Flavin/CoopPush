@@ -8,7 +8,7 @@ import pygame
 import matplotlib.pyplot as plt
 import random
 
-N_ENV = 512
+N_ENV = 1152
 N_THREADS = 6
 
 d_to_c_map = [
@@ -74,40 +74,40 @@ cpp_single_env = cooppush_cpp.CoopPushEnv(
 # Try out 10,000 steps in each environment
 def pure_environment_speed_test(num_steps=100000):
     global N_ENV, N_THREADS
-    # print("Starting pure environment speed test...")
-    # # Single C++ environment
-    # cpp_single_env.reset()
-    # start_time = time.time()
-    # for _ in range(num_steps):
-    #     actions = {
-    #         "particle_0": [1.0, 0.0],
-    #         "particle_1": [1.0, 0.0],
-    #         "particle_2": [1.0, 0.0],
-    #         "particle_3": [1.0, 0.0],
-    #     }
-    #     obs, reward, terminated, truncated, info = cpp_single_env.step(actions)
-    #     if terminated or truncated:
-    #         obs, info = cpp_single_env.reset()
+    print("Starting pure environment speed test...")
+    # Single C++ environment
+    cpp_single_env.reset()
+    start_time = time.time()
+    for _ in range(num_steps):
+        actions = {
+            "particle_0": [1.0, 0.0],
+            "particle_1": [1.0, 0.0],
+            "particle_2": [1.0, 0.0],
+            "particle_3": [1.0, 0.0],
+        }
+        obs, reward, terminated, truncated, info = cpp_single_env.step(actions)
+        if terminated or truncated:
+            obs, info = cpp_single_env.reset()
 
-    # end_time = time.time()
-    # single_cpp_duration = end_time - start_time
-    # print(
-    #     f"Single C++ environment: {num_steps} steps in {single_cpp_duration:.2f} seconds ({num_steps/single_cpp_duration:.2f} steps/sec)"
-    # )
+    end_time = time.time()
+    single_cpp_duration = end_time - start_time
+    print(
+        f"Single C++ environment: {num_steps} steps in {single_cpp_duration:.2f} seconds ({num_steps/single_cpp_duration:.2f} steps/sec)"
+    )
 
-    # # Vectorized C++ environment with 1 env
-    # print("Starting vec1 environment speed test...")
-    # cpp_vec1_env.reset()
-    # print("vec1 environment reset done.")
-    # start_time = time.time()
-    # for _ in range(num_steps):
-    #     actions = np.array([[[1.0, 0.0], [1.0, 0.0], [1.0, 0.0], [1.0, 0.0]]])
-    #     obs, reward, done, info = cpp_vec1_env.step(actions)
-    # end_time = time.time()
-    # vec1_cpp_duration = end_time - start_time
-    # print(
-    #     f"Vectorized C++ environment (1 env): {num_steps} steps in {vec1_cpp_duration:.2f} seconds ({num_steps/vec1_cpp_duration:.2f} steps/sec)"
-    # )
+    # Vectorized C++ environment with 1 env
+    print("Starting vec1 environment speed test...")
+    cpp_vec1_env.reset()
+    print("vec1 environment reset done.")
+    start_time = time.time()
+    for _ in range(num_steps):
+        actions = np.array([[[1.0, 0.0], [1.0, 0.0], [1.0, 0.0], [1.0, 0.0]]])
+        obs, reward, done, info = cpp_vec1_env.step(actions)
+    end_time = time.time()
+    vec1_cpp_duration = end_time - start_time
+    print(
+        f"Vectorized C++ environment (1 env): {num_steps} steps in {vec1_cpp_duration:.2f} seconds ({num_steps/vec1_cpp_duration:.2f} steps/sec)"
+    )
 
     print(f"Using {N_ENV} environments and {N_THREADS} threads for vectorized env.")
     # Vectorized C++ environment with 4 envs
@@ -130,7 +130,7 @@ class MLP(nn.Module):
         self.h2 = nn.Linear(256, 256)
         self.act_head = nn.Linear(256, 4 * 9)
         self.relu = nn.ReLU()
-        self.float()
+        self.double()
 
     def forward(self, x):
         x = self.relu(self.h1(x))
@@ -182,10 +182,10 @@ def _old_env_gpu(env, d_to_c_map, num_steps=10000):
     model = MLP().to("cuda")
     model_opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
     current_idx = 0
-    obs_buffer = torch.zeros((10000, 23), device="cuda")
-    next_obs_buffer = torch.zeros((10000, 23), device="cuda")
-    reward_buffer = torch.zeros((10000), device="cuda")
-    terminated_buffer = torch.zeros((10000), device="cuda")
+    obs_buffer = torch.zeros((10000, 23), device="cuda", dtype=torch.double)
+    next_obs_buffer = torch.zeros((10000, 23), device="cuda", dtype=torch.double)
+    reward_buffer = torch.zeros((10000), device="cuda", dtype=torch.double)
+    terminated_buffer = torch.zeros((10000), device="cuda", dtype=torch.double)
     actions_buffer = torch.zeros((10000, 4), device="cuda", dtype=torch.long)
 
     print("Starting pure environment speed test...")
@@ -197,7 +197,7 @@ def _old_env_gpu(env, d_to_c_map, num_steps=10000):
 
     start_time = time.time()
     for _ in range(num_steps):
-        torch_obs = torch.from_numpy(obs["particle_0"]).float().to("cuda")
+        torch_obs = torch.from_numpy(obs["particle_0"]).double().to("cuda")
         # print(f"torch obs shape: {torch_obs}")
         with torch.no_grad():
             if random.random() > _ / num_steps:
@@ -269,10 +269,12 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
         pass
     model_opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
     current_idx = 0
-    obs_buffer = torch.zeros((10000, n_envs, 23), device="cuda")
-    next_obs_buffer = torch.zeros((10000, n_envs, 23), device="cuda")
-    reward_buffer = torch.zeros((10000, n_envs), device="cuda")
-    terminated_buffer = torch.zeros((10000, n_envs), device="cuda")
+    obs_buffer = torch.zeros((10000, n_envs, 23), device="cuda", dtype=torch.double)
+    next_obs_buffer = torch.zeros(
+        (10000, n_envs, 23), device="cuda", dtype=torch.double
+    )
+    reward_buffer = torch.zeros((10000, n_envs), device="cuda", dtype=torch.double)
+    terminated_buffer = torch.zeros((10000, n_envs), device="cuda", dtype=torch.double)
     actions_buffer = torch.zeros((10000, n_envs, 4), device="cuda", dtype=torch.long)
 
     print("Starting pure environment speed test...")
@@ -287,9 +289,9 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
 
     start_time = time.time()
     # Preallocate pinned CPU buffer for fast, non-blocking H2D transfers
-    pinned_cpu_obs = torch.empty((n_envs, 23), dtype=torch.float32, pin_memory=True)
+    pinned_cpu_obs = torch.empty((n_envs, 23), dtype=torch.float64, pin_memory=True)
     # Initial transfer
-    pinned_cpu_obs.copy_(torch.from_numpy(obs).float())
+    pinned_cpu_obs.copy_(torch.from_numpy(obs).double())
     torch_obs = pinned_cpu_obs.unsqueeze(0).to("cuda", non_blocking=True)
     # Training hyperparameters to drive more GPU work per env step
     train_min_warmup = 64  # timesteps before starting updates
@@ -310,7 +312,9 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
                     ),
                 )
             else:
-                raw_actions = model(torch_obs).argmax(dim=-1).squeeze(0).detach()
+                raw_actions = model(torch_obs).argmax(dim=-1).detach()
+                if raw_actions.ndim > 2:
+                    raw_actions = raw_actions.squeeze(0)
         # input(
         #     f"raw action shape: {raw_actions.shape} buff shape: {actions_buffer[current_idx].shape}"
         # )
@@ -318,12 +322,15 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
         env_actions = np.zeros((n_envs, 4, 2))
         # print(f"raw act shape: {raw_actions.shape}")
         for e in range(n_envs):
+            # print(f"raw act: {raw_actions}")
             for a in range(4):
+                # print(f"raw actions ea: {raw_actions[e, a]}")
                 env_actions[e, a] = d_to_c_map[raw_actions[e, a]]
         next_obs, reward, terminated, truncated = env.step(env_actions)
         # Non-blocking H2D transfer via preallocated pinned buffer
-        pinned_cpu_obs.copy_(torch.from_numpy(next_obs).float(), non_blocking=True)
-        next_torch_obs = pinned_cpu_obs.unsqueeze(0).to("cuda", non_blocking=True)
+        # pinned_cpu_obs.copy_(torch.from_numpy(next_obs).double(), non_blocking=True)
+        # next_torch_obs = pinned_cpu_obs.unsqueeze(0).to("cuda", non_blocking=True)
+        next_torch_obs = torch.from_numpy(next_obs).to("cuda")
         # env.render()
         # pygame.event.clear()
         for e in range(n_envs):
@@ -350,26 +357,28 @@ def _new_env_gpu(env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=1
                         model_opt=model_opt,
                     )
                 )
-            print(l_hist[-1])
-        torch_obs = next_torch_obs
+            # print(l_hist[-1])
+
         current_idx += 1
         if current_idx == 10000:
             current_idx = 0
 
         if terminated[0] or truncated[0]:
             print(
-                f"ep reward env{0}: {r_hist[0][-1]}, steps / sec: {step_i*N_ENV / (time.time()-start_time):0.3f}"
+                f"ep reward env{0}: {r_hist[0][-1]}, steps / sec: {step_i*n_envs / (time.time()-start_time):0.3f}"
             )
 
         for e in range(n_envs):
             if terminated[e] or truncated[e]:
                 r_hist[e].append(0.0)
                 # Reset a single env with non-blocking transfer
-                reset_obs = env.reset_i(e)
+                env.reset_i(e)
                 # Copy into the appropriate slice of pinned buffer and then to GPU
-                pinned_cpu_obs[e].copy_(torch.from_numpy(reset_obs).float())
-                torch_obs[:, e] = pinned_cpu_obs[e].to("cuda", non_blocking=True)
+                # pinned_cpu_obs[e].copy_(torch.from_numpy(reset_obs).double())
+                # torch_obs[:, e] = pinned_cpu_obs[e].to("cuda", non_blocking=True)
 
+        torch_obs = next_torch_obs
+        obs = next_obs
     end_time = time.time()
     single_cpp_duration = end_time - start_time
     print(
@@ -422,5 +431,5 @@ def training_and_env_speed(num_steps=10000):
 
 
 if __name__ == "__main__":
-    # pure_environment_speed_test(10000000)
+    # pure_environment_speed_test(200000)
     training_and_env_speed()

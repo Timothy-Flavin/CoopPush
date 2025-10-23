@@ -246,4 +246,4 @@ if __name__ == "__main__":
         print("\n\n")
         input("next step")
         torch_states = torch_next_states
-        # states = next_states
+        states = next_states
