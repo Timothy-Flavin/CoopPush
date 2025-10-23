@@ -315,9 +315,9 @@ void VecBackendEnv::step(const double *actions, double *obs_ptr, double *rewards
     bool trunc = current_step >= truncate_after_steps_;
 
     get_global_state(obs_ptr);
-    rewards_ptr[my_index * sizeof(double)] = r;
-    terminateds_ptr[my_index * sizeof(bool)] = term;
-    truncateds_ptr[my_index * sizeof(bool)] = trunc;
+    *rewards_ptr = r;
+    *terminateds_ptr = term;
+    *truncateds_ptr = trunc;
     // TODO: actually copy the results in
     //  return StepResult{global_state, r, term, trunc};
 }
@@ -348,7 +348,7 @@ void VecBackendEnv::reset(double *global_state_ptr)
 }
 // Public helper to access current global state as a plain vector (no NumPy types)
 
-void VecBackendEnv::get_global_state(double *global_state_ptr)
+void VecBackendEnv::get_global_state(double *state_vec)
 {
     int visit_every_state_size = 0;
     if (this->visit_all)
@@ -358,7 +358,7 @@ void VecBackendEnv::get_global_state(double *global_state_ptr)
 
     // std::cout << "    npart4: " << n_particles * 4 << " nb*2 " << n_boulders * 2 << " nlandmark2 " << n_landmarks * 2 << " vess " << visit_every_state_size << std::endl;
     // std::vector<double> state_vec(n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size, 0);
-    double *state_vec = global_state_ptr + this->global_state_size * my_index * sizeof(double);
+    // double *state_vec = global_state_ptr + this->global_state_size * my_index * sizeof(double);
 
     for (int p = 0; p < n_particles; ++p)
     {

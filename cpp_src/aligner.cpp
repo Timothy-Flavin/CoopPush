@@ -77,6 +77,32 @@ py::array_t<bool> create_aligned_bool_buffer(ssize_t num_elements)
     );
 }
 
+py::array_t<double> create_aligned_double_buffer_2d(ssize_t dim1, ssize_t dim2)
+{
+
+    ssize_t num_elements = dim1 * dim2;
+    const size_t n_bytes = num_elements * sizeof(double);
+    if (n_bytes == 0)
+    {
+        return py::array_t<double>({dim1, dim2});
+    }
+
+    // 1. Allocate aligned memory (same as before)
+    void *ptr = ::operator new(n_bytes, std::align_val_t(CACHE_LINE_ALIGNMENT));
+
+    // 2. Create deleter capsule (same as before)
+    py::capsule deleter(ptr, [](void *p)
+                        { ::operator delete(p, std::align_val_t(CACHE_LINE_ALIGNMENT)); });
+
+    // 3. Create the 2D NumPy array wrapper
+    //    This is the key change.
+    return py::array_t<double>(
+        {dim1, dim2},                            // Shape: {N_ENVS, obs_size}
+        {dim2 * sizeof(double), sizeof(double)}, // Strides
+        static_cast<double *>(ptr),              // Pointer to flat data
+        deleter                                  // "Base" object
+    );
+}
 // --- Pybind11 Module Definition ---
 // (Replace 'my_allocator' with your desired module name)
 PYBIND11_MODULE(aligned_numpy_allocator, m)
@@ -93,4 +119,8 @@ PYBIND11_MODULE(aligned_numpy_allocator, m)
     m.def("create_aligned_bool_buffer", &create_aligned_bool_buffer,
           py::arg("num_elements"),
           "Creates a 1D NumPy array (bool) with cache-line alignment.");
+
+    m.def("create_aligned_double_buffer_2d", &create_aligned_double_buffer_2d,
+          py::arg("num_elements"),
+          "Creates a 2D NumPy array (float64) with cache-line alignment.");
 }

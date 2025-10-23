@@ -17,16 +17,23 @@ class VectorizedCoopPush
 {
 private:
     // --- Member Variables ---
-    std::vector<std::vector<double>> global_state_vecs;
-    std::vector<double> rewards;
-    std::vector<bool> terminateds;
-    std::vector<bool> truncateds;
-    ThreadPool pool;
-    std::vector<VecBackendEnv> envs;
-    int n_envs = 1;
-    int envs_per_job = 1;
-    int n_threads = 1;
-    int env_obs_size = 10;
+    // The *actual* memory owners
+    py::array_t<double> m_buffer_1;
+    py::array_t<double> m_buffer_2;
+    // "Pointers" to the current role of each buffer
+    py::array_t<double> m_current_obs;
+    py::array_t<double> m_next_obs;
+    // Buffers for rewards, terminals, etc.
+    py::array_t<double> m_rewards;
+    py::array_t<bool> m_terminateds;
+    py::array_t<bool> m_truncateds;
+
+    ThreadPool m_pool;
+    std::vector<VecBackendEnv> m_envs;
+    int m_n_envs = 1;
+    int m_envs_per_job = 1;
+    int m_n_threads = 1;
+    int m_env_obs_size = 10;
 
 public:
     VectorizedCoopPush();
@@ -44,8 +51,8 @@ public:
                        int n_envs,
                        int envs_per_job);
     ~VectorizedCoopPush() {};
-    void reset(py::array_t<double> global_state);
+    py::array_t<double> reset();
     py::array_t<double> reset_i(int i);
-    void reset_i(int i, py::array_t<double> global_state);
-    void step(py::array_t<double> actions, py::array_t<double> obs_buffer, py::array_t<double> rewards_buffer, py::array_t<bool> terminated_buffer, py::array_t<bool> truncated_buffer);
+    inline int obs_size() { return m_env_obs_size; };
+    std::tuple<py::array_t<double>, py::array_t<double>, py::array_t<bool>, py::array_t<bool>> step(py::array_t<double> actions);
 };
