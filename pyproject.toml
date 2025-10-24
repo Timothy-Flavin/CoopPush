@@ -6,18 +6,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cooppush"
-version = "1.2.2"
-authors = [
-  { name="Timothy Flavin", email="timothy.c.flavin@gmail.com" },
-]
-description = "MPE inspired push environment with tunable inter-action dependence for coop MARL"
+version = "1.2.3"
+description = "Cooperative Push environment"
 readme = "README.md"
 requires-python = ">=3.11"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-    "Operating System :: OS Independent",
-]
+# SPDX license expression recommended by packaging guides:
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "timothy-flavin" }]
+dependencies = []
 
 [project.urls]
 "Homepage" = "https://github.com/Timothy-Flavin/CoopPush/"

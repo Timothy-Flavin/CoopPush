@@ -6,3 +6,4 @@ build
 *.pyd
 cooppush
 src/cooppush.egg-info
+.venv

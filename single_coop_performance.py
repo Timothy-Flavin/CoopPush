@@ -7,7 +7,9 @@ import torch.nn as nn
 import pygame
 import matplotlib.pyplot as plt
 import random
+import argparse
 
+DEVICE = "cuda:0"
 N_ENV = 768
 N_THREADS = 6
 OBS_SIZE = 23
@@ -204,14 +206,14 @@ def update_model(
 
 
 def _old_env_gpu(env, d_to_c_map, num_steps=10000):
-    model = MLP().to("cuda")
+    model = MLP().to(DEVICE)
     model_opt = torch.optim.AdamW(model.parameters(), lr=1e-4)
     current_idx = 0
-    obs_buffer = torch.zeros((10000, OBS_SIZE), device="cuda", dtype=torch.float32)
-    next_obs_buffer = torch.zeros((10000, OBS_SIZE), device="cuda", dtype=torch.float32)
-    reward_buffer = torch.zeros((10000), device="cuda", dtype=torch.float32)
-    terminated_buffer = torch.zeros((10000), device="cuda", dtype=torch.float32)
-    actions_buffer = torch.zeros((10000, 4), device="cuda", dtype=torch.long)
+    obs_buffer = torch.zeros((10000, OBS_SIZE), device=DEVICE, dtype=torch.float32)
+    next_obs_buffer = torch.zeros((10000, OBS_SIZE), device=DEVICE, dtype=torch.float32)
+    reward_buffer = torch.zeros((10000), device=DEVICE, dtype=torch.float32)
+    terminated_buffer = torch.zeros((10000), device=DEVICE, dtype=torch.float32)
+    actions_buffer = torch.zeros((10000, 4), device=DEVICE, dtype=torch.long)
 
     print("Starting pure environment speed test...")
     # Single C++ environment
@@ -222,7 +224,7 @@ def _old_env_gpu(env, d_to_c_map, num_steps=10000):
 
     start_time = time.time()
     for _ in range(num_steps):
-        torch_obs = torch.from_numpy(obs["particle_0"]).double().to("cuda")
+        torch_obs = torch.from_numpy(obs["particle_0"]).float().to(DEVICE)
         # print(f"torch obs shape: {torch_obs}")
         with torch.no_grad():
             if random.random() > _ / num_steps:
@@ -238,9 +240,9 @@ def _old_env_gpu(env, d_to_c_map, num_steps=10000):
         # env.render()
         # pygame.event.clear()
         r_hist[-1] = r_hist[-1] + reward["particle_0"]
-        obs_buffer[current_idx] = torch.from_numpy(obs["particle_0"]).to("cuda")
+        obs_buffer[current_idx] = torch.from_numpy(obs["particle_0"]).to(DEVICE)
         next_obs_buffer[current_idx] = torch.from_numpy(next_obs["particle_0"]).to(
-            "cuda"
+            DEVICE
         )
         reward_buffer[current_idx] = reward["particle_0"]
         terminated_buffer[current_idx] = float(terminated["particle_0"])
@@ -292,7 +294,7 @@ def _new_env_gpu(
     n_threads=N_THREADS,
     num_steps=10000,
 ):
-    model = MLP().to("cuda")
+    model = MLP().to(DEVICE)
     times = {
         "action": 0.0,
         "to_env": 0.0,
@@ -309,15 +311,15 @@ def _new_env_gpu(
     model_opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
     current_idx = 0
     obs_buffer = torch.zeros(
-        (10000, n_envs, OBS_SIZE), device="cuda", dtype=torch.float32
+        (10000, n_envs, OBS_SIZE), device=DEVICE, dtype=torch.float32
     )
     next_obs_buffer = torch.zeros(
-        (10000, n_envs, OBS_SIZE), device="cuda", dtype=torch.float32
+        (10000, n_envs, OBS_SIZE), device=DEVICE, dtype=torch.float32
     )
-    reward_buffer = torch.zeros((10000, n_envs), device="cuda", dtype=torch.float32)
-    terminated_buffer = torch.zeros((10000, n_envs), device="cuda", dtype=torch.float32)
-    truncated_buffer = torch.zeros((10000, n_envs), device="cuda", dtype=torch.float32)
-    actions_buffer = torch.zeros((10000, n_envs, 4), device="cuda", dtype=torch.long)
+    reward_buffer = torch.zeros((10000, n_envs), device=DEVICE, dtype=torch.float32)
+    terminated_buffer = torch.zeros((10000, n_envs), device=DEVICE, dtype=torch.float32)
+    truncated_buffer = torch.zeros((10000, n_envs), device=DEVICE, dtype=torch.float32)
+    actions_buffer = torch.zeros((10000, n_envs, 4), device=DEVICE, dtype=torch.long)
 
     print("Starting pure environment speed test...")
     # Single C++ environment
@@ -338,7 +340,7 @@ def _new_env_gpu(
     # Initial transfer
     # pinned_cpu_obs.copy_(torch.from_numpy(obs).float())
     torch_obs = (
-        torch.from_numpy(obs).to("cuda", non_blocking=True).view((1, n_envs, -1))
+        torch.from_numpy(obs).to(DEVICE, non_blocking=True).view((1, n_envs, -1))
     )
     # Training hyperparameters to drive more GPU work per env step
     train_min_warmup = 64  # timesteps before starting updates
@@ -389,18 +391,18 @@ def _new_env_gpu(
         # pygame.event.clear()
         times["step"] += time.time() - a_env
         # Non-blocking H2D transfer via preallocated pinned buffer
-        # pinned_cpu_obs.copy_(torch.from_numpy(next_obs).double(), non_blocking=True)
-        # next_torch_obs = pinned_cpu_obs.unsqueeze(0).to("cuda", non_blocking=True)
+        # pinned_cpu_obs.copy_(torch.from_numpy(next_obs).float(), non_blocking=True)
+        # next_torch_obs = pinned_cpu_obs.unsqueeze(0).to(DEVICE, non_blocking=True)
 
         t_buff = time.time()
-        next_torch_obs = torch.from_numpy(next_obs).to("cuda").view((1, n_envs, -1))
+        next_torch_obs = torch.from_numpy(next_obs).to(DEVICE).view((1, n_envs, -1))
         for e in range(n_envs):
             r_hist[e][-1] += reward[e]
         obs_buffer[current_idx] = torch_obs[0]
         next_obs_buffer[current_idx] = next_torch_obs[0]
-        reward_buffer[current_idx] = torch.from_numpy(reward).to("cuda")
-        terminated_buffer[current_idx] = torch.from_numpy(terminated).to("cuda")
-        truncated_buffer[current_idx] = torch.from_numpy(truncated).to("cuda")
+        reward_buffer[current_idx] = torch.from_numpy(reward).to(DEVICE)
+        terminated_buffer[current_idx] = torch.from_numpy(terminated).to(DEVICE)
+        truncated_buffer[current_idx] = torch.from_numpy(truncated).to(DEVICE)
         actions_buffer[current_idx] = raw_actions
 
         times["save"] += time.time() - t_buff
@@ -441,11 +443,11 @@ def _new_env_gpu(
                 # Reset a single env with non-blocking transfer
                 env.reset_i(e)
                 next_torch_obs = (
-                    torch.from_numpy(next_obs).to("cuda").view((1, n_envs, -1))
+                    torch.from_numpy(next_obs).to(DEVICE).view((1, n_envs, -1))
                 )
                 # Copy into the appropriate slice of pinned buffer and then to GPU
-                # pinned_cpu_obs[e].copy_(torch.from_numpy(reset_obs).double())
-                # torch_obs[:, e] = pinned_cpu_obs[e].to("cuda", non_blocking=True)
+                # pinned_cpu_obs[e].copy_(torch.from_numpy(reset_obs).float())
+                # torch_obs[:, e] = pinned_cpu_obs[e].to(DEVICE, non_blocking=True)
 
         times["reset"] += time.time() - t_reset
 
@@ -513,7 +515,7 @@ def _new_env_gpu(
 def training_and_env_speed(num_steps=10000):
     global N_ENV, N_THREADS, d_to_c_map
 
-    # _old_env_gpu(env=cpp_single_env, d_to_c_map=d_to_c_map, num_steps=10000)
+    _old_env_gpu(env=cpp_single_env, d_to_c_map=d_to_c_map, num_steps=10000)
     # _new_env_gpu(cpp_vec1_env, d_to_c_map, n_envs=1, n_threads=1, num_steps=10000)
     _new_env_gpu(
         cpp_vec_env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=2000
@@ -548,5 +550,16 @@ def training_and_env_speed(num_steps=10000):
 
 
 if __name__ == "__main__":
-    # pure_environment_speed_test(200000)
+    parser = argparse.ArgumentParser(description="single_coop_performance")
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=DEVICE,
+        help='Torch device string, e.g. "cpu" or "cuda:0" (default: "%(default)s")',
+    )
+    args = parser.parse_args()
+    DEVICE = args.device
+    print(f"Using device: {DEVICE}")
+
+    pure_environment_speed_test(200000)
     training_and_env_speed()

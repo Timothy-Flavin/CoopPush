@@ -6,6 +6,8 @@
 using ssize_t = SSIZE_T;
 #endif
 #include <mutex>
+#include <condition_variable>
+#include <vector>
 
 class ThreadPool
 {
