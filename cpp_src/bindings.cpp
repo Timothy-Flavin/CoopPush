@@ -45,15 +45,15 @@ PYBIND11_MODULE(cooppush_cpp, m)
 
      py::class_<VectorizedCoopPush>(m, "VectorizedEnvironment")
          .def(py::init<>()) // Default constructor
-         .def(py::init<std::vector<double>,
-                       std::vector<double>,
-                       std::vector<double>,
+         .def(py::init<std::vector<float>,
+                       std::vector<float>,
+                       std::vector<float>,
                        int,
                        bool,
                        bool,
-                       double,
-                       double,
-                       double,
+                       float,
+                       float,
+                       float,
                        int,
                        int,
                        int,

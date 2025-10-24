@@ -89,6 +89,7 @@ class CoopPushEnv(ParallelEnv):
             )
             pygame.display.set_caption("Particle Simulation")
             self.clock = pygame.time.Clock()
+            self.font = pygame.font.Font(None, 24)
 
         # --- PettingZoo API Requirements ---
         self.agents = [f"particle_{i}" for i in range(self.n_particles)]

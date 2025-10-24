@@ -13,8 +13,8 @@ using ssize_t = SSIZE_T;
 namespace py = pybind11;
 struct StepResult
 {
-    std::vector<double> observation;
-    double reward;
+    std::vector<float> observation;
+    float reward;
     bool terminated;
     bool truncated;
 };
@@ -25,18 +25,18 @@ private:
     int num_particles_ = 0;
 
     // Initial state (used for reset)
-    std::vector<double> initial_particle_positions_;
-    std::vector<double> initial_boulder_positions_;
-    std::vector<double> initial_landmark_positions_;
+    std::vector<float> initial_particle_positions_;
+    std::vector<float> initial_boulder_positions_;
+    std::vector<float> initial_landmark_positions_;
     // Current state
-    std::vector<double> current_particle_positions_;
-    std::vector<double> current_boulder_positions_;
-    std::vector<double> current_landmark_positions_;
-    std::vector<double> next_particle_positions_;
-    std::vector<double> next_boulder_positions_;
-    std::vector<double> next_landmark_positions_;
-    std::vector<double> current_particle_velocities_;
-    std::vector<double> current_boulder_velocities_;
+    std::vector<float> current_particle_positions_;
+    std::vector<float> current_boulder_positions_;
+    std::vector<float> current_landmark_positions_;
+    std::vector<float> next_particle_positions_;
+    std::vector<float> next_boulder_positions_;
+    std::vector<float> next_landmark_positions_;
+    std::vector<float> current_particle_velocities_;
+    std::vector<float> current_boulder_velocities_;
 
     std::vector<bool> landmark_pairs;
     std::vector<bool> finished_boulders;
@@ -49,10 +49,10 @@ private:
 
     bool sparse_rewards = true;
     bool visit_all = true;
-    double displacement_reward = 0.0;
-    double sparse_weight = 1.0;
-    double delta_time = 0.1;
-    double boulder_weight = 5.0;
+    float displacement_reward = 0.0;
+    float sparse_weight = 1.0;
+    float delta_time = 0.1;
+    float boulder_weight = 5.0;
     int truncate_after_steps_ = 1000;
     int current_step = 0;
 
@@ -60,36 +60,38 @@ private:
     // don't participate in the implicit copy/assignment operators of the
     // class (which previously deleted the assignment operator and caused
     // std::vector<VecBackendEnv> usages to fail).
-    static constexpr double LANDMARK_R = 1.0;
-    static constexpr double BOULDER_R = 5.0;
-    static constexpr double PARTICLE_R = 1.0;
-    static constexpr double total_radius = BOULDER_R + PARTICLE_R;
-    static constexpr double total_radius_sq = total_radius * total_radius;
+    static constexpr float LANDMARK_R = 1.0;
+    static constexpr float BOULDER_R = 5.0;
+    static constexpr float PARTICLE_R = 1.0;
+    static constexpr float total_radius = BOULDER_R + PARTICLE_R;
+    static constexpr float total_radius_sq = total_radius * total_radius;
 
-    static constexpr double TOTAL_BOULDER_R = 2.0 * BOULDER_R;
-    static constexpr double TOTAL_BOULDER_R_SQ = TOTAL_BOULDER_R * TOTAL_BOULDER_R;
+    static constexpr float TOTAL_BOULDER_R = 2.0 * BOULDER_R;
+    static constexpr float TOTAL_BOULDER_R_SQ = TOTAL_BOULDER_R * TOTAL_BOULDER_R;
     int global_state_size;
+    const int my_index;
 
 public:
     VecBackendEnv();
-    VecBackendEnv(std::vector<double> particle_positions,
-                  std::vector<double> boulder_positions,
-                  std::vector<double> landmark_positions,
+    VecBackendEnv(std::vector<float> particle_positions,
+                  std::vector<float> boulder_positions,
+                  std::vector<float> landmark_positions,
                   int n_physics_steps,
                   bool sparse_rewards,
                   bool visit_all,
-                  double sparse_weight,
-                  double dt,
-                  double boulder_weight,
-                  int truncate_after_steps);
+                  float sparse_weight,
+                  float dt,
+                  float boulder_weight,
+                  int truncate_after_steps,
+                  const int idx);
     ~VecBackendEnv() {};
-    std::vector<double> reset();
-    std::vector<double> get_global_state();
-    void set_naive_next_pos(const double *actions);
+    void reset(float *global_state_ptr);
+    void get_global_state(float *global_state_ptr);
+    void set_naive_next_pos(const float *actions);
     void move_things();
-    double get_reward_all();
-    double get_reward_one();
+    float get_reward_all();
+    float get_reward_one();
     int state_size();
     int get_num_particles() { return this->n_particles; };
-    StepResult step(const double *actions);
+    void step(const float *actions, float *obs_ptr, float *rewards_ptr, bool *terminateds_ptr, bool *truncateds_ptr);
 };

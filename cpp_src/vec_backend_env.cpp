@@ -3,10 +3,10 @@
 #include <pybind11/numpy.h>
 #include "vec_backend_env.h"
 
-void VecBackendEnv::set_naive_next_pos(const double *actions)
+void VecBackendEnv::set_naive_next_pos(const float *actions)
 {
     // make a copy of actions
-    std::vector<double> action_vec(actions, actions + n_particles * 2);
+    std::vector<float> action_vec(actions, actions + n_particles * 2);
     for (int ai = 0; ai < this->n_particles; ++ai)
     {
         if (action_vec[ai * 2] > 1.0)
@@ -18,7 +18,7 @@ void VecBackendEnv::set_naive_next_pos(const double *actions)
         if (action_vec[ai * 2 + 1] < -1.0)
             action_vec[ai * 2 + 1] = -1.0;
 
-        double mag = std::sqrt(action_vec[ai * 2] * action_vec[ai * 2] + action_vec[ai * 2 + 1] * action_vec[ai * 2 + 1]);
+        float mag = std::sqrt(action_vec[ai * 2] * action_vec[ai * 2] + action_vec[ai * 2 + 1] * action_vec[ai * 2 + 1]);
         if (mag < 1.0)
         {
             mag = 1.0;
@@ -34,27 +34,27 @@ void VecBackendEnv::set_naive_next_pos(const double *actions)
 }
 void VecBackendEnv::move_things()
 {
-    std::vector<double> boulder_displacements(n_boulders * 2, 0.0);
+    std::vector<float> boulder_displacements(n_boulders * 2, 0.0);
 
     // add overlap from particles to boulder displacements
     for (int b = 0; b < n_boulders; ++b)
     {
-        double b_move_x = 0.0;
-        double b_move_y = 0.0;
+        float b_move_x = 0.0;
+        float b_move_y = 0.0;
         for (int p = 0; p < n_particles; ++p)
         {
-            double dx = current_boulder_positions_[b * 2] - next_particle_positions_[p * 2];
-            double dy = current_boulder_positions_[b * 2 + 1] - next_particle_positions_[p * 2 + 1];
-            double particle_dist_sqr = dx * dx + dy * dy;
+            float dx = current_boulder_positions_[b * 2] - next_particle_positions_[p * 2];
+            float dy = current_boulder_positions_[b * 2 + 1] - next_particle_positions_[p * 2 + 1];
+            float particle_dist_sqr = dx * dx + dy * dy;
             if (particle_dist_sqr < total_radius_sq)
             {
-                double d = std::sqrt(particle_dist_sqr);
-                double overlap_dist = total_radius - d;
+                float d = std::sqrt(particle_dist_sqr);
+                float overlap_dist = total_radius - d;
 
-                double move_dist = (1.0 / boulder_weight) * overlap_dist;
+                float move_dist = (1.0 / boulder_weight) * overlap_dist;
 
-                double normal_x = dx / d;
-                double normal_y = dy / d;
+                float normal_x = dx / d;
+                float normal_y = dy / d;
 
                 b_move_x += normal_x * move_dist;
                 b_move_y += normal_y * move_dist;
@@ -71,18 +71,18 @@ void VecBackendEnv::move_things()
         for (int j = i + 1; j < n_boulders; ++j)
         {
             // Calculate the vector from boulder i to boulder j
-            double dx = current_boulder_positions_[j * 2] - current_boulder_positions_[i * 2];
-            double dy = current_boulder_positions_[j * 2 + 1] - current_boulder_positions_[i * 2 + 1];
-            double dist_sqr = dx * dx + dy * dy;
+            float dx = current_boulder_positions_[j * 2] - current_boulder_positions_[i * 2];
+            float dy = current_boulder_positions_[j * 2 + 1] - current_boulder_positions_[i * 2 + 1];
+            float dist_sqr = dx * dx + dy * dy;
             if (dist_sqr < TOTAL_BOULDER_R_SQ)
             {
-                double d = std::sqrt(dist_sqr);
-                double overlap_dist = TOTAL_BOULDER_R - d;
-                double move_dist = (1.0 / 2.0) * overlap_dist;
+                float d = std::sqrt(dist_sqr);
+                float overlap_dist = TOTAL_BOULDER_R - d;
+                float move_dist = (1.0 / 2.0) * overlap_dist;
 
                 // Normalize the vector from i to j to get the direction
-                double normal_x = dx / d;
-                double normal_y = dy / d;
+                float normal_x = dx / d;
+                float normal_y = dy / d;
 
                 boulder_displacements[i * 2] -= normal_x * move_dist;
                 boulder_displacements[i * 2 + 1] -= normal_y * move_dist;
@@ -99,13 +99,13 @@ void VecBackendEnv::move_things()
         for (int b = 0; b < n_boulders; ++b)
         {
             int cl = -1;
-            double cd = 10000000.0;
-            double bdx = 1.0e-8;
-            double bdy = 1.0e-8;
+            float cd = 10000000.0;
+            float bdx = 1.0e-8;
+            float bdy = 1.0e-8;
             for (int l = 0; l < n_landmarks; ++l)
             {
-                double dx = current_boulder_positions_[b * 2] - current_landmark_positions_[l * 2];
-                double dy = current_boulder_positions_[b * 2 + 1] - current_landmark_positions_[l * 2 + 1];
+                float dx = current_boulder_positions_[b * 2] - current_landmark_positions_[l * 2];
+                float dy = current_boulder_positions_[b * 2 + 1] - current_landmark_positions_[l * 2 + 1];
                 if (dx * dx + dy * dy < cd && !landmark_pairs[l * n_boulders + b] && !finished_boulders[b])
                 {
                     // std::cout << "Boulder " << b << " closest to landmark " << l << " dx: " << dx << " dy: " << dy << std::endl;
@@ -118,7 +118,7 @@ void VecBackendEnv::move_things()
 
             if (cl != -1)
             {
-                // double dist = std::sqrt(bdx * bdx + bdy * bdy);
+                // float dist = std::sqrt(bdx * bdx + bdy * bdy);
                 bdx += boulder_displacements[b * 2];
                 bdy += boulder_displacements[b * 2 + 1];
                 // std::cout << "Boulder lowest dx dy" << b << " closest to landmark " << cl << " bdx: " << bdx << " bdy: " << bdy << std::endl;
@@ -135,7 +135,7 @@ void VecBackendEnv::move_things()
         current_boulder_positions_[b * 2 + 1] += boulder_displacements[b * 2 + 1];
     }
 
-    std::vector<double> particle_displacements(n_particles * 2, 0.0);
+    std::vector<float> particle_displacements(n_particles * 2, 0.0);
     // Iterate through each particle
     for (int p = 0; p < n_particles; ++p)
     {
@@ -143,23 +143,23 @@ void VecBackendEnv::move_things()
         for (int b = 0; b < n_boulders; ++b)
         {
             // Calculate the vector from the boulder to the particle
-            double dx = next_particle_positions_[p * 2] - current_boulder_positions_[b * 2];
-            double dy = next_particle_positions_[p * 2 + 1] - current_boulder_positions_[b * 2 + 1];
+            float dx = next_particle_positions_[p * 2] - current_boulder_positions_[b * 2];
+            float dy = next_particle_positions_[p * 2 + 1] - current_boulder_positions_[b * 2 + 1];
 
             // Calculate the squared distance
-            double dist_sqr = dx * dx + dy * dy;
+            float dist_sqr = dx * dx + dy * dy;
 
             // Check for overlap
             if (dist_sqr < total_radius_sq)
             {
-                double d = std::sqrt(dist_sqr);
+                float d = std::sqrt(dist_sqr);
 
                 // Calculate the overlap distance
-                double overlap_dist = total_radius - d;
+                float overlap_dist = total_radius - d;
 
                 // Normalize the vector from the boulder to the particle
-                double normal_x = dx / d;
-                double normal_y = dy / d;
+                float normal_x = dx / d;
+                float normal_y = dy / d;
 
                 // std::cout << "Particle position: " << next_particle_positions_[p * 2] << "," << next_particle_positions_[p * 2 + 1] << ", boulder position: " << current_boulder_positions_[b * 2] << "," << current_boulder_positions_[b * 2 + 1] << ", dx: " << normal_x * overlap_dist << ", dy: " << normal_y * overlap_dist << std::endl;
 
@@ -178,17 +178,17 @@ void VecBackendEnv::move_things()
     }
 }
 
-double VecBackendEnv::get_reward_all()
+float VecBackendEnv::get_reward_all()
 {
-    double r = 0.0;
+    float r = 0.0;
     n_lm = 0;
     n_active_boulders = 1;
     for (int l = 0; l < n_landmarks; ++l)
     {
         for (int b = 0; b < n_boulders; ++b)
         {
-            double dx = current_boulder_positions_[b * 2] - current_landmark_positions_[l * 2];
-            double dy = current_boulder_positions_[b * 2 + 1] - current_landmark_positions_[l * 2 + 1];
+            float dx = current_boulder_positions_[b * 2] - current_landmark_positions_[l * 2];
+            float dy = current_boulder_positions_[b * 2 + 1] - current_landmark_positions_[l * 2 + 1];
             if (!landmark_pairs[l * n_boulders + b] && total_radius_sq > dx * dx + dy * dy)
             {
                 landmark_pairs[l * n_boulders + b] = true;
@@ -201,9 +201,9 @@ double VecBackendEnv::get_reward_all()
         r += displacement_reward;
     return r;
 }
-double VecBackendEnv::get_reward_one()
+float VecBackendEnv::get_reward_one()
 {
-    double r = 0.0;
+    float r = 0.0;
     n_active_boulders = n_boulders;
     n_lm = 1;
 
@@ -216,8 +216,8 @@ double VecBackendEnv::get_reward_one()
         }
         for (int l = 0; l < n_landmarks; ++l)
         {
-            double dx = current_boulder_positions_[b * 2] - current_landmark_positions_[l * 2];
-            double dy = current_boulder_positions_[b * 2 + 1] - current_landmark_positions_[l * 2 + 1];
+            float dx = current_boulder_positions_[b * 2] - current_landmark_positions_[l * 2];
+            float dy = current_boulder_positions_[b * 2 + 1] - current_landmark_positions_[l * 2 + 1];
             if (total_radius_sq > dx * dx + dy * dy)
             {
                 landmark_pairs[l * n_boulders + b] = true;
@@ -233,19 +233,20 @@ double VecBackendEnv::get_reward_one()
     return r;
 }
 
-VecBackendEnv::VecBackendEnv()
+VecBackendEnv::VecBackendEnv() : my_index(0)
 {
 }
-VecBackendEnv::VecBackendEnv(std::vector<double> particle_positions,
-                             std::vector<double> boulder_positions,
-                             std::vector<double> landmark_positions,
+VecBackendEnv::VecBackendEnv(std::vector<float> particle_positions,
+                             std::vector<float> boulder_positions,
+                             std::vector<float> landmark_positions,
                              int n_physics_steps,
                              bool sparse_rewards,
                              bool visit_all,
-                             double sparse_weight,
-                             double dt,
-                             double boulder_weight,
-                             int truncate_after_steps)
+                             float sparse_weight,
+                             float dt,
+                             float boulder_weight,
+                             int truncate_after_steps,
+                             const int idx) : my_index(idx)
 {
 
     // std::cout << "C++ init() called." << std::endl;
@@ -274,6 +275,12 @@ VecBackendEnv::VecBackendEnv(std::vector<double> particle_positions,
     n_boulders = static_cast<int>(initial_boulder_positions_.size() / 2);
     n_particles = static_cast<int>(initial_particle_positions_.size() / 2);
 
+    int visit_every_state_size = 0;
+    if (visit_all)
+        visit_every_state_size = n_boulders * n_landmarks;
+    else
+        visit_every_state_size = n_boulders;
+
     current_boulder_velocities_.resize(initial_boulder_positions_.size(), 0.0);
     current_particle_velocities_.resize(initial_particle_positions_.size(), 0.0);
     std::fill(current_boulder_velocities_.begin(), current_boulder_velocities_.end(), 0);
@@ -284,19 +291,15 @@ VecBackendEnv::VecBackendEnv(std::vector<double> particle_positions,
     finished_boulders.resize(n_boulders, false);
     std::fill(finished_boulders.begin(), finished_boulders.end(), false);
     num_particles_ = static_cast<int>(particle_positions.size() / 2);
-
-    int visit_every_state_size = 0;
-    if (visit_all)
-        visit_every_state_size = n_boulders * n_landmarks;
-    else
-        visit_every_state_size = n_boulders;
+    // std::cout << " CPP vec backend n_particles " << n_particles << " n_boulders " << n_boulders << " n_landmarks: " << n_landmarks << " vevery: " << visit_every_state_size;
     this->global_state_size = n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size;
+    // std::cout << " state size " << global_state_size << std::endl;
 }
 
-StepResult VecBackendEnv::step(const double *actions)
+void VecBackendEnv::step(const float *actions, float *obs_ptr, float *rewards_ptr, bool *terminateds_ptr, bool *truncateds_ptr)
 {
     ++current_step;
-    double r = 0.0;
+    float r = 0.0;
     for (int i = 0; i < n_physics_steps_; ++i)
     {
         set_naive_next_pos(actions);
@@ -306,7 +309,7 @@ StepResult VecBackendEnv::step(const double *actions)
         else
             r += get_reward_one();
     }
-    std::vector<double> global_state = get_global_state();
+    // std::vector<float> global_state = get_global_state();
 
     bool term = false;
     if (visit_all)
@@ -315,10 +318,15 @@ StepResult VecBackendEnv::step(const double *actions)
         term = n_active_boulders == 0;
     bool trunc = current_step >= truncate_after_steps_;
 
-    return StepResult{global_state, r, term, trunc};
+    get_global_state(obs_ptr);
+    *rewards_ptr = r;
+    *terminateds_ptr = term;
+    *truncateds_ptr = trunc;
+    // TODO: actually copy the results in
+    //  return StepResult{global_state, r, term, trunc};
 }
 
-std::vector<double> VecBackendEnv::reset()
+void VecBackendEnv::reset(float *global_state_ptr)
 {
     // Reset current state to the stored initial state
     this->current_step = 0;
@@ -330,30 +338,21 @@ std::vector<double> VecBackendEnv::reset()
     next_landmark_positions_ = initial_landmark_positions_;
     current_boulder_velocities_.resize(initial_boulder_positions_.size(), 0.0);
     current_particle_velocities_.resize(initial_particle_positions_.size(), 0.0);
-    // std::cout << "  vec backend resized velocities\n";
-
     std::fill(current_boulder_velocities_.begin(), current_boulder_velocities_.end(), 0);
     std::fill(current_particle_velocities_.begin(), current_particle_velocities_.end(), 0);
-    // Prepare return values
-
-    // std::cout << "  fill successful\n";
-    std::vector<double> global_state = get_global_state();
-
-    // std::cout << "  got global state\n";
     landmark_pairs.resize(n_landmarks * n_boulders, false);
     std::fill(landmark_pairs.begin(), landmark_pairs.end(), false);
     finished_boulders.resize(n_boulders, false);
     std::fill(finished_boulders.begin(), finished_boulders.end(), false);
-
     n_lm = 1;
     n_active_boulders = 1;
+    get_global_state(global_state_ptr);
 
     // std::cout << "  reset successful" << std::endl;
-    return global_state;
 }
 // Public helper to access current global state as a plain vector (no NumPy types)
 
-std::vector<double> VecBackendEnv::get_global_state()
+void VecBackendEnv::get_global_state(float *state_vec)
 {
     int visit_every_state_size = 0;
     if (this->visit_all)
@@ -362,7 +361,8 @@ std::vector<double> VecBackendEnv::get_global_state()
         visit_every_state_size = n_boulders;
 
     // std::cout << "    npart4: " << n_particles * 4 << " nb*2 " << n_boulders * 2 << " nlandmark2 " << n_landmarks * 2 << " vess " << visit_every_state_size << std::endl;
-    std::vector<double> state_vec(n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size, 0);
+    // std::vector<float> state_vec(n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size, 0);
+    // float *state_vec = global_state_ptr + this->global_state_size * my_index * sizeof(float);
 
     for (int p = 0; p < n_particles; ++p)
     {
@@ -396,7 +396,7 @@ std::vector<double> VecBackendEnv::get_global_state()
             state_vec[n_particles * 4 + 2 * n_boulders + 2 * n_landmarks + v] = finished_boulders[v];
         }
     }
-    return state_vec;
+    // return state_vec;
 }
 
 int VecBackendEnv::state_size()
