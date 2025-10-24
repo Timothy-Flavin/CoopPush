@@ -56,7 +56,7 @@ cpp_vec_env = cooppushvec.CoopPushVectorizedEnv(
     dt=0.2,
     boulder_weight=1.0,
     normalize_observations=False,
-    envs_per_job=8,
+    envs_per_job=64,
     truncate_after=75,
     # render_mode="human",
 )
