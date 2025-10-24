@@ -4,9 +4,11 @@ from src.cooppush import environment as cooppush_cpp
 from src.cooppush import vectorized_environment as cooppushvec
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import pygame
 import matplotlib.pyplot as plt
 import random
+from copy import deepcopy
 
 N_ENV = 768
 N_THREADS = 6
@@ -39,61 +41,60 @@ cpp_vec1_env = cooppushvec.CoopPushVectorizedEnv(
     visit_all=False,
     sparse_weight=1,
     dt=0.2,
-    boulder_weight=1.0,
-    normalize_observations=False,
-    truncate_after=75,
-)
+    def update_model(
+        obs,
+        next_obs,
+        reward,
+        terminated,
+        truncated,
+        actions,
+        model,
+        target_model,
+        batch_size,
+        max_idx,
+        model_opt,
+        gamma: float = 0.99,
+        grad_clip: float = 10.0,
+    ):
+        """One Double-DQN VDN update on a random time batch.
 
-cpp_vec_env = cooppushvec.CoopPushVectorizedEnv(
-    json_path="default_push_level.json",
-    num_envs=N_ENV,
-    num_threads=N_THREADS,
-    cpp_steps_per_step=10,
-    sparse_rewards=False,
-    visit_all=False,
-    sparse_weight=1,
-    dt=0.2,
-    boulder_weight=1.0,
-    normalize_observations=False,
-    envs_per_job=8,
-    truncate_after=75,
-    # render_mode="human",
-)
+        Shapes:
+          - obs,next_obs: [T, N, 23]
+          - actions:      [T, N, 4] (each in [0..8])
+          - reward, done: [T, N]
+          Returns scalar loss.
+        """
+        idx = torch.randint(0, high=max_idx, size=(batch_size,), device=obs.device)
 
-cpp_single_env = cooppush_cpp.CoopPushEnv(
-    json_path="default_push_level.json",
-    cpp_steps_per_step=10,
-    sparse_rewards=False,
-    visit_all=False,
-    sparse_weight=1,
-    dt=0.2,
-    boulder_weight=1.0,
-    normalize_observations=False,
-    fps=30,
-)
+        # Q(s,a) for chosen actions, sum over agents (VDN)
+        q_logits_now = model(obs[idx])               # [B, N, 4, 9]
+        q_taken = q_logits_now.gather(
+            dim=-1, index=actions[idx].unsqueeze(-1)
+        ).squeeze(-1)                                # [B, N, 4]
+        q_now = q_taken.sum(-1)                      # [B, N]
 
+        with torch.no_grad():
+            # Double DQN: select with online, evaluate with target
+            q_logits_next_online = model(next_obs[idx])         # [B, N, 4, 9]
+            a_star = q_logits_next_online.argmax(dim=-1)        # [B, N, 4]
 
-# Try out 10,000 steps in each environment
-def pure_environment_speed_test(num_steps=100000):
-    global N_ENV, N_THREADS
-    print("Starting pure environment speed test...")
-    # Single C++ environment
-    cpp_single_env.reset()
-    start_time = time.time()
-    for _ in range(num_steps):
-        actions = {
-            "particle_0": [1.0, 0.0],
-            "particle_1": [1.0, 0.0],
-            "particle_2": [1.0, 0.0],
-            "particle_3": [1.0, 0.0],
-        }
-        obs, reward, terminated, truncated, info = cpp_single_env.step(actions)
-        if terminated or truncated:
-            obs, info = cpp_single_env.reset()
+            q_logits_next_target = target_model(next_obs[idx])  # [B, N, 4, 9]
+            q_next_taken = q_logits_next_target.gather(
+                dim=-1, index=a_star.unsqueeze(-1)
+            ).squeeze(-1)                                       # [B, N, 4]
+            q_next = q_next_taken.sum(-1)                        # [B, N]
 
-    end_time = time.time()
-    single_cpp_duration = end_time - start_time
-    print(
+            done = (terminated[idx] > 0.5) | (truncated[idx] > 0.5)
+            discount = (~done).float()
+            target = reward[idx] + gamma * discount * q_next     # [B, N]
+
+        loss = F.smooth_l1_loss(q_now, target)
+        model_opt.zero_grad(set_to_none=True)
+        loss.backward()
+        if grad_clip is not None and grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        model_opt.step()
+        return loss.item()
         f"Single C++ environment: {num_steps} steps in {single_cpp_duration:.2f} seconds ({num_steps/single_cpp_duration:.2f} steps/sec)"
     )
 
@@ -150,6 +151,8 @@ def update_model(
     obs, next_obs, reward, terminated, actions, model, batch_size, max_idx, model_opt
 ):
     idx = torch.randint(0, high=max_idx, size=(batch_size,))
+    # print(f"idx: {idx}")
+    # print(reward[idx])
 
     q_now = (
         model(obs[idx])
@@ -158,26 +161,26 @@ def update_model(
         .sum(-1)
     )
     # print(f"qnow shape: {q_now.shape}")
-    # print(f"actions: {actions[idx]}")
+    print(f"actions: {actions[idx]}")
     with torch.no_grad():
-        # print(model(obs[idx]))
-        # print(model(next_obs[idx]))
-        # print("Q shape stuff")
+        print(model(obs[idx]))
+        print(model(next_obs[idx]))
+        print("Q shape stuff")
         qn = model(next_obs[idx])
-        # print(f"raw shape: {qn.shape}")
+        print(f"raw shape: {qn.shape}")
         qn = qn.max(dim=-1).values
-        # print(f"max shape: {qn.shape}")
+        print(f"max shape: {qn.shape}")
         qn = qn.sum(-1)
-        # print(f"vdn shape: {qn.shape}")
+        print(f"vdn shape: {qn.shape}")
         q_next = model(next_obs[idx]).max(dim=-1).values.sum(-1)
         # print(f"qnext shape: {q_now.shape}")
         # print(f"reward shape: {reward[idx].shape}")
         # print(f"terminated shape: {terminated[idx].shape}")
         # print(f"qnext shape: {q_next.shape}")
-        # print("reward")
-        # print(reward[idx])
-        target = reward[idx] + 0.99 * (1 - terminated[idx]) * q_next
-        # print(target)
+        print("reward")
+        print(reward[idx])
+        target = reward[idx] + 0.9 * (1 - terminated[idx]) * q_next
+        print(target)
         # print(f"target shape: {target.shape}")
     loss = ((q_now - target) ** 2).mean()
     model_opt.zero_grad()
@@ -199,6 +202,7 @@ def update_model(
     #     print(f"loss in weird situation {j}: {loss.item()}")
     #     print(f"qnow: {q_now.mean()} qnext {q_next.mean()}")
 
+    input("update working?")
     return loss.item()
 
 
@@ -292,6 +296,8 @@ def _new_env_gpu(
     num_steps=10000,
 ):
     model = MLP().to("cuda")
+    target_model = deepcopy(model).to("cuda")
+    tau = 0.005  # soft update rate
     times = {
         "action": 0.0,
         "to_env": 0.0,
@@ -308,9 +314,7 @@ def _new_env_gpu(
     model_opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
     current_idx = 0
     obs_buffer = torch.zeros((10000, n_envs, 23), device="cuda", dtype=torch.float32)
-    next_obs_buffer = torch.zeros(
-        (10000, n_envs, 23), device="cuda", dtype=torch.float32
-    )
+    next_obs_buffer = torch.zeros((10000, n_envs, 23), device="cuda", dtype=torch.float32)
     reward_buffer = torch.zeros((10000, n_envs), device="cuda", dtype=torch.float32)
     terminated_buffer = torch.zeros((10000, n_envs), device="cuda", dtype=torch.float32)
     truncated_buffer = torch.zeros((10000, n_envs), device="cuda", dtype=torch.float32)
@@ -323,15 +327,15 @@ def _new_env_gpu(
     # input(f"obs buffer shape: {obs_buffer.shape}")
     r_hist = []
     for i in range(n_envs):
-        r_hist.append([0.0])
+        r_hist.append([0])
     l_hist = []
     # print(obs)
 
     start_time = time.time()
     # Preallocate pinned CPU buffer for fast, non-blocking H2D transfers
-    pinned_cpu_obs = torch.empty((n_envs, 23), dtype=torch.float64, pin_memory=True)
+    pinned_cpu_obs = torch.empty((n_envs, 23), dtype=torch.float32, pin_memory=True)
     # Initial transfer
-    pinned_cpu_obs.copy_(torch.from_numpy(obs).float())
+    pinned_cpu_obs.copy_(torch.from_numpy(obs).astype(np.float32))
     torch_obs = pinned_cpu_obs.to("cuda", non_blocking=True).view((1, n_envs, -1))
     # Training hyperparameters to drive more GPU work per env step
     train_min_warmup = 64  # timesteps before starting updates
@@ -354,7 +358,7 @@ def _new_env_gpu(
                     ),
                 )
             else:
-                raw_actions = model(torch_obs.float()).argmax(dim=-1).detach()
+                raw_actions = model(torch_obs).argmax(dim=-1).detach()
                 if raw_actions.ndim > 2:
                     raw_actions = raw_actions.squeeze(0)
         times["action"] += time.time() - a_t
@@ -377,24 +381,24 @@ def _new_env_gpu(
         times["to_env"] += time.time() - a_to
 
         a_env = time.time()
-        next_obs, reward, terminated, truncated = env.step(env_actions)
-        # env.render(env_num=0)
-        # pygame.event.clear()
+    next_obs, reward, terminated, truncated = env.step(env_actions)
+        env.render(env_num=0)
+        pygame.event.clear()
         times["step"] += time.time() - a_env
         # Non-blocking H2D transfer via preallocated pinned buffer
         # pinned_cpu_obs.copy_(torch.from_numpy(next_obs).double(), non_blocking=True)
         # next_torch_obs = pinned_cpu_obs.unsqueeze(0).to("cuda", non_blocking=True)
 
         t_buff = time.time()
-        next_torch_obs = torch.from_numpy(next_obs).to("cuda").view((1, n_envs, -1))
+    next_torch_obs = torch.from_numpy(next_obs).to("cuda").float().view((1, n_envs, -1))
         for e in range(n_envs):
             r_hist[e][-1] += reward[e]
-        obs_buffer[current_idx] = torch_obs[0]
-        next_obs_buffer[current_idx] = next_torch_obs[0]
+    obs_buffer[current_idx] = torch_obs[0]
+    next_obs_buffer[current_idx] = next_torch_obs[0]
         reward_buffer[current_idx] = torch.from_numpy(reward).to("cuda")
         terminated_buffer[current_idx] = torch.from_numpy(terminated).to("cuda")
-        truncated_buffer[current_idx] = torch.from_numpy(truncated).to("cuda")
-        actions_buffer[current_idx] = raw_actions
+    truncated_buffer[current_idx] = torch.from_numpy(truncated).to("cuda")
+    actions_buffer[current_idx] = raw_actions
 
         times["save"] += time.time() - t_buff
 
@@ -408,13 +412,21 @@ def _new_env_gpu(
                         next_obs_buffer,
                         reward_buffer,
                         terminated_buffer,
+                        truncated_buffer,
                         actions_buffer,
                         model,
+                        target_model,
                         batch_size=train_batch_size,
                         max_idx=min(current_idx, 10000),
                         model_opt=model_opt,
+                        gamma=0.99,
+                        grad_clip=10.0,
                     )
                 )
+                # Soft update target network
+                with torch.no_grad():
+                    for p_t, p in zip(target_model.parameters(), model.parameters()):
+                        p_t.data.lerp_(p.data, tau)
                 num_updates += 1
         times["train"] += time.time() - t_train
         # print(l_hist[-1])
@@ -444,7 +456,7 @@ def _new_env_gpu(
 
         if done:
             print(
-                f"ep reward env{0}: {r_hist[0][-2]}, steps / sec: {step_i*n_envs / (time.time()-start_time):0.3f}"
+                f"ep reward env{0}: {r_hist[0][-1]}, steps / sec: {step_i*n_envs / (time.time()-start_time):0.3f}"
             )
             print(f"current epsilon: {step_i / num_steps}")
             print(times)
@@ -477,9 +489,7 @@ def _new_env_gpu(
     )
 
     max_len = len(r_hist[0])
-    print(max_len)
     for e in range(n_envs):
-        print(f" env {e} len: {len(r_hist[e])}")
         if len(r_hist[e]) > max_len:
             max_len = r_hist[e]
 
@@ -505,7 +515,7 @@ def _new_env_gpu(
 def training_and_env_speed(num_steps=10000):
     global N_ENV, N_THREADS, d_to_c_map
 
-    _old_env_gpu(env=cpp_single_env, d_to_c_map=d_to_c_map, num_steps=10000)
+    # _old_env_gpu(env=cpp_single_env, d_to_c_map=d_to_c_map, num_steps=10000)
 
     # _new_env_gpu(cpp_vec1_env, d_to_c_map, n_envs=1, n_threads=1, num_steps=10000)
     _new_env_gpu(

@@ -291,9 +291,9 @@ VecBackendEnv::VecBackendEnv(std::vector<double> particle_positions,
     finished_boulders.resize(n_boulders, false);
     std::fill(finished_boulders.begin(), finished_boulders.end(), false);
     num_particles_ = static_cast<int>(particle_positions.size() / 2);
-    std::cout << " CPP vec backend n_particles " << n_particles << " n_boulders " << n_boulders << " n_landmarks: " << n_landmarks << " vevery: " << visit_every_state_size;
+    // std::cout << " CPP vec backend n_particles " << n_particles << " n_boulders " << n_boulders << " n_landmarks: " << n_landmarks << " vevery: " << visit_every_state_size;
     this->global_state_size = n_particles * 4 + n_boulders * 2 + n_landmarks * 2 + visit_every_state_size;
-    std::cout << " state size " << global_state_size << std::endl;
+    // std::cout << " state size " << global_state_size << std::endl;
 }
 
 void VecBackendEnv::step(const double *actions, double *obs_ptr, double *rewards_ptr, bool *terminateds_ptr, bool *truncateds_ptr)

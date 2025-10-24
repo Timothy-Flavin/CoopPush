@@ -2,7 +2,7 @@ import json
 from typing import Tuple
 
 import numpy as np
-
+import pygame
 import cooppush.cooppush_cpp as cooppush_cpp
 
 
@@ -33,7 +33,9 @@ class CoopPushVectorizedEnv:
         dt: float = 0.2,
         boulder_weight: float = 4.0,
         normalize_observations: bool = True,
+        render_mode: str | None = None,
     ) -> None:
+        self.render_mode = render_mode
         self.num_envs = int(num_envs)
         self.num_threads = int(num_threads)
         self.cpp_steps_per_step = int(cpp_steps_per_step)
@@ -60,7 +62,11 @@ class CoopPushVectorizedEnv:
         self._initial_landmark_pos = np.array(
             env_setup["landmark_pos"], dtype=np.float64
         )
-
+        self.particle_radius = 1
+        self.landmark_radius = 1
+        self.boulder_radius = 5
+        # self.randomize_order = randomize_order
+        # self.start_noise = start_noise
         # Initialize C++ vectorized env
         # Binding signature (per backend.cpp):
         self.cpp_env = cooppush_cpp.VectorizedEnvironment(
@@ -117,6 +123,20 @@ class CoopPushVectorizedEnv:
                 norm_array[idx + 1] = 25.0
             self._norm_array = norm_array
 
+        self.screen = None
+        self.screen_width = 800
+        self.screen_height = 600
+        self.clock = None
+        if self.render_mode is not None:
+            pygame.init()
+            self.screen = pygame.display.set_mode(
+                (self.screen_width, self.screen_height)
+            )
+            pygame.display.set_caption("Particle Simulation")
+            self.font = pygame.font.Font(None, 24)
+            self.clock = pygame.time.Clock()
+            self.fps = 30
+
     def reset(self) -> np.ndarray:
         """
         Resets all vectorized environments.
@@ -128,6 +148,8 @@ class CoopPushVectorizedEnv:
         """
         print("python resetting")
         obs = self.cpp_env.reset()
+        if self.render_mode is not None:
+            self.cached_state = np.copy(obs)
         # If normalizing, do it in-place to preserve reference to C++ buffer
         if self.normalize_observations and self._norm_array is not None:
             np.divide(obs, self._norm_array[np.newaxis, :], out=obs, casting="unsafe")
@@ -165,6 +187,8 @@ class CoopPushVectorizedEnv:
         actions_np = np.asarray(actions, dtype=np.float64)
         # states_array, rewards, terminations, truncations = self.cpp_env.step(actions_np)
         obs, reward, term, trunc = self.cpp_env.step(actions_np)
+        if self.render_mode is not None:
+            self.cached_state = np.copy(obs)
         if self.normalize_observations and self._norm_array is not None:
             # In-place to keep sharing C++ buffer
             np.divide(obs, self._norm_array[np.newaxis, :], out=obs, casting="unsafe")
@@ -181,6 +205,118 @@ class CoopPushVectorizedEnv:
             # Normalize only the i-th row in-place, preserving reference semantics
             np.divide(obs[i], self._norm_array, out=obs[i], casting="unsafe")
         return obs[i]
+
+    def scale_to_screen(self, x, y):
+        x = (x - self.min_x) / self.x_range * self.screen_width
+        y = (y - self.min_y) / self.y_range * self.screen_height
+        return (int(x), int(y))
+
+    def scale_screen(self, _state):
+        self.min_x = _state[0]
+        self.max_x = _state[0]
+        self.min_y = _state[1]
+        self.max_y = _state[1]
+        for i in range(_state.shape[0]):
+            if i % 2 == 0:
+                if _state[i] < self.min_x:
+                    self.min_x = _state[i]
+                if _state[i] > self.max_x:
+                    self.max_x = _state[i]
+            else:
+                if _state[i] < self.min_y:
+                    self.min_y = _state[i]
+                if _state[i] > self.max_y:
+                    self.max_y = _state[i]
+        self.min_x = self.min_x - 10.0
+        self.min_y = self.min_y - 10.0
+        self.max_x = self.max_x + 10.0
+        self.max_y = self.max_y + 10.0
+        self.x_range = self.max_x - self.min_x
+        self.y_range = self.max_y - self.min_y
+
+        if self.x_range / self.screen_width > self.y_range / self.screen_height:
+            avg_y = (self.min_y + self.max_y) / 2
+            self.scale = self.x_range / self.screen_width
+            self.min_y = avg_y - self.scale * self.screen_height / 2
+            self.max_y = avg_y + self.scale * self.screen_height / 2
+            self.y_range = self.max_y - self.min_y
+        else:
+            avg_x = (self.min_x + self.max_x) / 2
+            self.scale = self.y_range / self.screen_height
+            self.min_x = avg_x - self.scale * self.screen_width / 2
+            self.max_x = avg_x + self.scale * self.screen_width / 2
+            self.x_range = self.max_x - self.min_x
+
+    def render(self, importance: None | np.ndarray = None, env_num=0) -> None | str:
+        """
+        Renders the environment to the screen using Pygame.
+
+        This function assumes self.state is a flattened array of positions:
+        [p1_x, p1_y, p2_x, p2_y, ..., b1_x, b1_y, ..., l1_x, l1_y, ...]
+        """
+        if self.render_mode != "human":
+            # Do nothing if not in human rendering mode
+            return
+        assert self.screen is not None, "cant render to no screen"
+        assert self.clock is not None, "cant tick nonexistent clock"
+        # Colors for different objects (in RGB format)
+        PARTICLE_COLOR = (255, 0, 0)  # Red
+        BOULDER_COLOR = (128, 128, 128)  # Gray
+        LANDMARK_COLOR = (0, 0, 255)  # Blue
+        BACKGROUND_COLOR = (0, 0, 0)  # Black
+        cs = self.cached_state[env_num]
+        self.scale_screen(cs)
+        # Clear the screen with the background color
+        self.screen.fill(BACKGROUND_COLOR)
+
+        # Draw particles
+        for i in range(self.n_particles):
+            # Calculate the index for the particle's x and y coordinates
+            my_col = PARTICLE_COLOR
+            if importance is not None:
+                my_col = tuple(int(c * importance[i]) for c in PARTICLE_COLOR)
+
+            x_idx = i * 4
+            y_idx = i * 4 + 1
+            x = cs[x_idx]
+            y = cs[y_idx]
+            center = self.scale_to_screen(x, y)
+            radius = int(self.particle_radius / self.scale)
+            pygame.draw.circle(self.screen, my_col, center, radius)
+            # Render agent id as text on agent
+            agent_label = self.font.render(str(i), True, (255, 255, 255))
+            label_rect = agent_label.get_rect(center=center)
+            self.screen.blit(agent_label, label_rect)
+        # Draw boulders
+        for i in range(self.n_boulders):
+            # Calculate the index for the boulder's x and y coordinates
+            offset = self.n_particles * 4
+            x_idx = offset + i * 2
+            y_idx = offset + i * 2 + 1
+            x = cs[x_idx]
+            y = cs[y_idx]
+            center = self.scale_to_screen(x, y)
+            radius = int(self.boulder_radius / self.scale)
+            pygame.draw.circle(self.screen, BOULDER_COLOR, center, radius)
+
+        # Draw landmarks
+        for i in range(self.n_landmarks):
+            # Calculate the index for the landmark's x and y coordinates
+            offset = self.n_particles * 4 + self.n_boulders * 2
+            x_idx = offset + i * 2
+            y_idx = offset + i * 2 + 1
+            x = cs[x_idx]
+            y = cs[y_idx]
+            center = self.scale_to_screen(x, y)
+            radius = int(self.landmark_radius / self.scale)
+            pygame.draw.circle(self.screen, LANDMARK_COLOR, center, radius)
+
+        # Update the display to show the changes
+        pygame.display.flip()
+
+        # Control the frame rate
+        # self.clock.tick(self.fps)
+        # pygame.event.clear()
 
 
 if __name__ == "__main__":
