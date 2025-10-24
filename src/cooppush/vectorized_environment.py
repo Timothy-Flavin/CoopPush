@@ -54,13 +54,13 @@ class CoopPushVectorizedEnv:
         self.n_boulders = len(env_setup["boulder_pos"]) // 2
         self.n_landmarks = len(env_setup["landmark_pos"]) // 2
 
-        # Keep the starts as float64 arrays (CPP expects double)
+        # Keep the starts as float32 arrays (CPP expects float)
         self._initial_particle_pos = np.array(
-            env_setup["particle_pos"], dtype=np.float64
+            env_setup["particle_pos"], dtype=np.float32
         )
-        self._initial_boulder_pos = np.array(env_setup["boulder_pos"], dtype=np.float64)
+        self._initial_boulder_pos = np.array(env_setup["boulder_pos"], dtype=np.float32)
         self._initial_landmark_pos = np.array(
-            env_setup["landmark_pos"], dtype=np.float64
+            env_setup["landmark_pos"], dtype=np.float32
         )
         self.particle_radius = 1
         self.landmark_radius = 1
@@ -106,8 +106,8 @@ class CoopPushVectorizedEnv:
                 + v_every_size
             )
             self.state_dim = state_dim
-            # Match C++ dtype (double) so in-place ops don't force copies
-            norm_array = np.ones(state_dim, dtype=np.float64)
+            # Match C++ dtype (float) so in-place ops don't force copies
+            norm_array = np.ones(state_dim, dtype=np.float32)
             for i in range(self.n_particles):
                 norm_array[i * 4] = 25.0
                 norm_array[i * 4 + 1] = 25.0
@@ -164,7 +164,7 @@ class CoopPushVectorizedEnv:
         Parameters
         ----------
         actions : np.ndarray
-            Shape (num_envs, n_particles, 2), dtype float32/float64.
+            Shape (num_envs, n_particles, 2), dtype float32/float32.
 
         Returns
         -------
@@ -183,8 +183,8 @@ class CoopPushVectorizedEnv:
             and actions.shape[2] == 2
         ), f"actions must have shape (num_envs={self.num_envs}, n_particles={self.n_particles}, 2) but had shape {actions.shape}"
 
-        # Ensure double precision for C++ side; no copy if already contiguous float64
-        actions_np = np.asarray(actions, dtype=np.float64)
+        # Ensure float precision for C++ side; no copy if already contiguous float32
+        actions_np = np.asarray(actions, dtype=np.float32)
         # states_array, rewards, terminations, truncations = self.cpp_env.step(actions_np)
         obs, reward, term, trunc = self.cpp_env.step(actions_np)
         if self.render_mode is not None:
@@ -333,15 +333,15 @@ if __name__ == "__main__":
     states = env.reset()
     n_envs = env.num_envs
     actions = np.random.uniform(-1, 1, size=(n_envs, env.n_particles, 2)).astype(
-        np.float64
+        np.float32
     )
 
     # simulate mem buffer simulation
-    state_buff = torch.zeros((10, N_ENV, S_DIM), dtype=torch.float64, device="cuda")
+    state_buff = torch.zeros((10, N_ENV, S_DIM), dtype=torch.float32, device="cuda")
     next_state_buff = torch.zeros(
-        (10, N_ENV, S_DIM), dtype=torch.float64, device="cuda"
+        (10, N_ENV, S_DIM), dtype=torch.float32, device="cuda"
     )
-    reward_buff = torch.zeros((10, N_ENV), dtype=torch.float64, device="cuda")
+    reward_buff = torch.zeros((10, N_ENV), dtype=torch.float32, device="cuda")
     term_buff = torch.zeros((10, N_ENV), dtype=torch.bool, device="cuda")
     trunc_buff = torch.zeros((10, N_ENV), dtype=torch.bool, device="cuda")
 

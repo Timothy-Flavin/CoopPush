@@ -6,6 +6,6 @@
 using ssize_t = SSIZE_T;
 #endif
 namespace py = pybind11;
-py::array_t<double> create_aligned_double_buffer(ssize_t num_elements);
-py::array_t<double> create_aligned_double_buffer_2d(ssize_t dim1, ssize_t dim2);
+py::array_t<float> create_aligned_float_buffer(ssize_t num_elements);
+py::array_t<float> create_aligned_float_buffer_2d(ssize_t dim1, ssize_t dim2);
 py::array_t<bool> create_aligned_bool_buffer(ssize_t num_elements);

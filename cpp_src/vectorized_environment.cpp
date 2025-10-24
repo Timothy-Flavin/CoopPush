@@ -5,12 +5,12 @@
 #include "aligner.h"
 namespace py = pybind11;
 
-py::array_t<double> vec2d_to_pyarray(const std::vector<std::vector<double>> &vec)
+py::array_t<float> vec2d_to_pyarray(const std::vector<std::vector<float>> &vec)
 {
 
     size_t rows = vec.size();
     size_t cols = vec[0].size();
-    py::array_t<double> result({rows, cols});
+    py::array_t<float> result({rows, cols});
     auto buffer = result.mutable_unchecked<2>();
     for (size_t i = 0; i < rows; ++i)
     {
@@ -22,11 +22,11 @@ py::array_t<double> vec2d_to_pyarray(const std::vector<std::vector<double>> &vec
     return result;
 }
 
-// Convert a std::vector<double> (1D) to a py::array_t<double>
-py::array_t<double> vec1d_to_pyarray(const std::vector<double> &vec)
+// Convert a std::vector<float> (1D) to a py::array_t<float>
+py::array_t<float> vec1d_to_pyarray(const std::vector<float> &vec)
 {
     // Create a 1D NumPy array with the same length as the vector
-    py::array_t<double> result(vec.size());
+    py::array_t<float> result(vec.size());
     // Use a mutable view to write data efficiently
     auto buffer = result.mutable_unchecked<1>();
     for (size_t i = 0; i < vec.size(); ++i)
@@ -39,15 +39,15 @@ py::array_t<double> vec1d_to_pyarray(const std::vector<double> &vec)
 VectorizedCoopPush::VectorizedCoopPush()
 {
 }
-VectorizedCoopPush::VectorizedCoopPush(std::vector<double> particle_positions,
-                                       std::vector<double> boulder_positions,
-                                       std::vector<double> landmark_positions,
+VectorizedCoopPush::VectorizedCoopPush(std::vector<float> particle_positions,
+                                       std::vector<float> boulder_positions,
+                                       std::vector<float> landmark_positions,
                                        int n_physics_steps,
                                        bool sparse_rewards,
                                        bool visit_all,
-                                       double sparse_weight,
-                                       double dt,
-                                       double boulder_weight,
+                                       float sparse_weight,
+                                       float dt,
+                                       float boulder_weight,
                                        int truncate_after_steps,
                                        int n_threads,
                                        int n_envs,
@@ -75,9 +75,9 @@ VectorizedCoopPush::VectorizedCoopPush(std::vector<double> particle_positions,
     assert(!this->m_envs.empty());
     this->m_env_obs_size = this->m_envs.at(0).state_size();
 
-    m_buffer_1 = create_aligned_double_buffer_2d(m_n_envs, m_env_obs_size);
-    m_buffer_2 = create_aligned_double_buffer_2d(m_n_envs, m_env_obs_size);
-    m_rewards = create_aligned_double_buffer(m_n_envs);
+    m_buffer_1 = create_aligned_float_buffer_2d(m_n_envs, m_env_obs_size);
+    m_buffer_2 = create_aligned_float_buffer_2d(m_n_envs, m_env_obs_size);
+    m_rewards = create_aligned_float_buffer(m_n_envs);
     m_terminateds = create_aligned_bool_buffer(m_n_envs);
     m_truncateds = create_aligned_bool_buffer(m_n_envs);
 
@@ -86,31 +86,31 @@ VectorizedCoopPush::VectorizedCoopPush(std::vector<double> particle_positions,
 
     // std::cout << "m1: " << m_buffer_1 << " m2: " << m_buffer_2 << " current: " << m_current_obs << " next: " << m_next_obs << std::endl;
 }
-py::array_t<double> VectorizedCoopPush::reset()
+py::array_t<float> VectorizedCoopPush::reset()
 {
-    double *obs_ptr = m_next_obs.mutable_data();
+    float *obs_ptr = m_next_obs.mutable_data();
     std::cout << "this observation size: " << m_env_obs_size << " with obs buffer shape: " << m_next_obs.shape() << "\n";
     for (int i = 0; i < m_n_envs; ++i)
     {
-        // Pointer arithmetic is in elements, not bytes: do NOT multiply by sizeof(double)
+        // Pointer arithmetic is in elements, not bytes: do NOT multiply by sizeof(float)
         this->m_envs[i].reset(obs_ptr + this->m_env_obs_size * i);
     }
     // Return the buffer that is now filled with the first obs
     return m_next_obs;
 }
 
-py::array_t<double> VectorizedCoopPush::reset_i(int i)
+py::array_t<float> VectorizedCoopPush::reset_i(int i)
 {
-    double *obs_ptr = m_next_obs.mutable_data();
+    float *obs_ptr = m_next_obs.mutable_data();
     // Pointer arithmetic is in elements, not bytes
     this->m_envs[i].reset(obs_ptr + this->m_env_obs_size * i);
     return m_next_obs;
 }
 
 void step_job(
-    py::array_t<double, py::array::c_style | py::array::forcecast> &actions,
-    double *obs_ptr,
-    double *rewards_ptr,
+    py::array_t<float, py::array::c_style | py::array::forcecast> &actions,
+    float *obs_ptr,
+    float *rewards_ptr,
     bool *terminateds_ptr,
     bool *truncateds_ptr,
     std::vector<VecBackendEnv> &envs,
@@ -123,7 +123,7 @@ void step_job(
     ssize_t action_size = 2;
     for (ssize_t i = start_i; i < end_i; ++i)
     {
-        const double *action_ptr = actions_acc.data(i, 0, 0);
+        const float *action_ptr = actions_acc.data(i, 0, 0);
         envs[i].step(
             action_ptr,
             // Offsets are in elements, not bytes
@@ -134,14 +134,14 @@ void step_job(
     }
 }
 
-std::tuple<py::array_t<double>, py::array_t<double>, py::array_t<bool>, py::array_t<bool>> VectorizedCoopPush::step(py::array_t<double> actions)
+std::tuple<py::array_t<float>, py::array_t<float>, py::array_t<bool>, py::array_t<bool>> VectorizedCoopPush::step(py::array_t<float> actions)
 {
     // Ensure the numpy array is in a C-style contiguous layout for safe pointer access.
     std::swap(m_current_obs, m_next_obs); // current obs has presumable been saved at this point
     // std::cout << "Step: m1: " << m_buffer_1 << " m2: " << m_buffer_2 << " current: " << m_current_obs << " next: " << m_next_obs << std::endl;
-    auto actions_cstyle = py::array_t<double, py::array::c_style | py::array::forcecast>(actions);
-    double *obs_ptr = m_next_obs.mutable_data();
-    double *rewards_ptr = m_rewards.mutable_data();
+    auto actions_cstyle = py::array_t<float, py::array::c_style | py::array::forcecast>(actions);
+    float *obs_ptr = m_next_obs.mutable_data();
+    float *rewards_ptr = m_rewards.mutable_data();
     bool *terminated_ptr = m_terminateds.mutable_data();
     bool *truncated_ptr = m_truncateds.mutable_data();
     // Dispatch jobs to the thread pool, dividing the work into chunks.

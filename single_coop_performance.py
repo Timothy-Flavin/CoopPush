@@ -10,6 +10,7 @@ import random
 
 N_ENV = 768
 N_THREADS = 6
+OBS_SIZE = 23
 
 d_to_c_map = [
     [0.0, 0.0],
@@ -22,7 +23,7 @@ d_to_c_map = [
     [-1.0, 0.0],
     [-1.0, 1.0],
 ]
-d_to_c_map = np.asarray(d_to_c_map)
+d_to_c_map = np.asarray(d_to_c_map, dtype=np.float32)
 
 env_attributes = {
     "particle_pos": [5.0, 5.0, -5.0, 5.0, -5.0, -5.0, 5.0, -5.0],
@@ -128,7 +129,7 @@ def pure_environment_speed_test(num_steps=100000):
 class MLP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.h1 = nn.Linear(23, 256)
+        self.h1 = nn.Linear(OBS_SIZE, 256)
         self.h2 = nn.Linear(256, 256)
         self.act_head = nn.Linear(256, 4 * 9)
         self.relu = nn.Tanh()
@@ -176,7 +177,7 @@ def update_model(
         # print(f"qnext shape: {q_next.shape}")
         # print("reward")
         # print(reward[idx])
-        target = reward[idx] + 0.99 * (1 - terminated[idx]) * q_next
+        target = reward[idx] + 0.95 * (1 - terminated[idx]) * q_next
         # print(target)
         # print(f"target shape: {target.shape}")
     loss = ((q_now - target) ** 2).mean()
@@ -206,8 +207,8 @@ def _old_env_gpu(env, d_to_c_map, num_steps=10000):
     model = MLP().to("cuda")
     model_opt = torch.optim.AdamW(model.parameters(), lr=1e-4)
     current_idx = 0
-    obs_buffer = torch.zeros((10000, 23), device="cuda", dtype=torch.float32)
-    next_obs_buffer = torch.zeros((10000, 23), device="cuda", dtype=torch.float32)
+    obs_buffer = torch.zeros((10000, OBS_SIZE), device="cuda", dtype=torch.float32)
+    next_obs_buffer = torch.zeros((10000, OBS_SIZE), device="cuda", dtype=torch.float32)
     reward_buffer = torch.zeros((10000), device="cuda", dtype=torch.float32)
     terminated_buffer = torch.zeros((10000), device="cuda", dtype=torch.float32)
     actions_buffer = torch.zeros((10000, 4), device="cuda", dtype=torch.long)
@@ -307,9 +308,11 @@ def _new_env_gpu(
         pass
     model_opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
     current_idx = 0
-    obs_buffer = torch.zeros((10000, n_envs, 23), device="cuda", dtype=torch.float32)
+    obs_buffer = torch.zeros(
+        (10000, n_envs, OBS_SIZE), device="cuda", dtype=torch.float32
+    )
     next_obs_buffer = torch.zeros(
-        (10000, n_envs, 23), device="cuda", dtype=torch.float32
+        (10000, n_envs, OBS_SIZE), device="cuda", dtype=torch.float32
     )
     reward_buffer = torch.zeros((10000, n_envs), device="cuda", dtype=torch.float32)
     terminated_buffer = torch.zeros((10000, n_envs), device="cuda", dtype=torch.float32)
@@ -329,15 +332,19 @@ def _new_env_gpu(
 
     start_time = time.time()
     # Preallocate pinned CPU buffer for fast, non-blocking H2D transfers
-    pinned_cpu_obs = torch.empty((n_envs, 23), dtype=torch.float64, pin_memory=True)
+    # pinned_cpu_obs = torch.empty(
+    #     (n_envs, OBS_SIZE), dtype=torch.float32, pin_memory=True
+    # )
     # Initial transfer
-    pinned_cpu_obs.copy_(torch.from_numpy(obs).float())
-    torch_obs = pinned_cpu_obs.to("cuda", non_blocking=True).view((1, n_envs, -1))
+    # pinned_cpu_obs.copy_(torch.from_numpy(obs).float())
+    torch_obs = (
+        torch.from_numpy(obs).to("cuda", non_blocking=True).view((1, n_envs, -1))
+    )
     # Training hyperparameters to drive more GPU work per env step
     train_min_warmup = 64  # timesteps before starting updates
-    train_steps_per_iter = 32  # number of optimizer steps per environment step
+    train_steps_per_iter = 16  # number of optimizer steps per environment step
     train_batch_size = (
-        2  # temporal samples; effective batch is train_batch_size * n_envs
+        8  # temporal samples; effective batch is train_batch_size * n_envs
     )
     num_updates = 0
     for step_i in range(num_steps):
@@ -477,15 +484,16 @@ def _new_env_gpu(
     )
 
     max_len = len(r_hist[0])
-    print(max_len)
+    # print(max_len)
     for e in range(n_envs):
-        print(f" env {e} len: {len(r_hist[e])}")
+        # print(f" env {e} ", end="")
+        # print(f"len: {len(r_hist[e])}")
         if len(r_hist[e]) > max_len:
-            max_len = r_hist[e]
+            max_len = len(r_hist[e])
 
     res_raw = np.empty((len(r_hist), max_len))
     for e in range(n_envs):
-        res_raw[: len(r_hist[e])] = np.array(r_hist[e])
+        res_raw[e, : len(r_hist[e])] = np.array(r_hist[e])
 
     mean_rs = res_raw.mean(axis=0)
     top = res_raw.max(axis=0)
@@ -505,8 +513,7 @@ def _new_env_gpu(
 def training_and_env_speed(num_steps=10000):
     global N_ENV, N_THREADS, d_to_c_map
 
-    _old_env_gpu(env=cpp_single_env, d_to_c_map=d_to_c_map, num_steps=10000)
-
+    # _old_env_gpu(env=cpp_single_env, d_to_c_map=d_to_c_map, num_steps=10000)
     # _new_env_gpu(cpp_vec1_env, d_to_c_map, n_envs=1, n_threads=1, num_steps=10000)
     _new_env_gpu(
         cpp_vec_env, d_to_c_map, n_envs=N_ENV, n_threads=N_THREADS, num_steps=2000

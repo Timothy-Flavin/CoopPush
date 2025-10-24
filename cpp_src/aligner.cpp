@@ -18,17 +18,17 @@ const size_t CACHE_LINE_ALIGNMENT = 64;
 #endif
 
 /**
- * @brief Allocates a 1D NumPy array of doubles,
+ * @brief Allocates a 1D NumPy array of floats,
  * guaranteed to start on a cache-line boundary.
- * @param num_elements The number of doubles in the array.
- * @return A 1D py::array_t<double> (NumPy ndarray).
+ * @param num_elements The number of floats in the array.
+ * @return A 1D py::array_t<float> (NumPy ndarray).
  */
-py::array_t<double> create_aligned_double_buffer(ssize_t num_elements)
+py::array_t<float> create_aligned_float_buffer(ssize_t num_elements)
 {
-    const size_t n_bytes = num_elements * sizeof(double);
+    const size_t n_bytes = num_elements * sizeof(float);
     if (n_bytes == 0)
     {
-        return py::array_t<double>({num_elements});
+        return py::array_t<float>({num_elements});
     }
 
     // 1. Allocate aligned memory using C++17's aligned new.
@@ -40,11 +40,11 @@ py::array_t<double> create_aligned_double_buffer(ssize_t num_elements)
                         { ::operator delete(p, std::align_val_t(CACHE_LINE_ALIGNMENT)); });
 
     // 3. Create the NumPy array wrapper (zero-copy).
-    return py::array_t<double>(
-        {num_elements},             // Shape (1D)
-        {sizeof(double)},           // Strides
-        static_cast<double *>(ptr), // Pointer to data
-        deleter                     // "Base" object that owns the memory
+    return py::array_t<float>(
+        {num_elements},            // Shape (1D)
+        {sizeof(float)},           // Strides
+        static_cast<float *>(ptr), // Pointer to data
+        deleter                    // "Base" object that owns the memory
     );
 }
 
@@ -78,14 +78,14 @@ py::array_t<bool> create_aligned_bool_buffer(ssize_t num_elements)
     );
 }
 
-py::array_t<double> create_aligned_double_buffer_2d(ssize_t dim1, ssize_t dim2)
+py::array_t<float> create_aligned_float_buffer_2d(ssize_t dim1, ssize_t dim2)
 {
 
     ssize_t num_elements = dim1 * dim2;
-    const size_t n_bytes = num_elements * sizeof(double);
+    const size_t n_bytes = num_elements * sizeof(float);
     if (n_bytes == 0)
     {
-        return py::array_t<double>({dim1, dim2});
+        return py::array_t<float>({dim1, dim2});
     }
 
     // 1. Allocate aligned memory (same as before)
@@ -97,10 +97,10 @@ py::array_t<double> create_aligned_double_buffer_2d(ssize_t dim1, ssize_t dim2)
 
     // 3. Create the 2D NumPy array wrapper
     //    This is the key change.
-    return py::array_t<double>(
-        {dim1, dim2},                            // Shape: {N_ENVS, obs_size}
-        {dim2 * sizeof(double), sizeof(double)}, // Strides
-        static_cast<double *>(ptr),              // Pointer to flat data
-        deleter                                  // "Base" object
+    return py::array_t<float>(
+        {dim1, dim2},                          // Shape: {N_ENVS, obs_size}
+        {dim2 * sizeof(float), sizeof(float)}, // Strides
+        static_cast<float *>(ptr),             // Pointer to flat data
+        deleter                                // "Base" object
     );
 }

@@ -18,13 +18,13 @@ class VectorizedCoopPush
 private:
     // --- Member Variables ---
     // The *actual* memory owners
-    py::array_t<double> m_buffer_1;
-    py::array_t<double> m_buffer_2;
+    py::array_t<float> m_buffer_1;
+    py::array_t<float> m_buffer_2;
     // "Pointers" to the current role of each buffer
-    py::array_t<double> m_current_obs;
-    py::array_t<double> m_next_obs;
+    py::array_t<float> m_current_obs;
+    py::array_t<float> m_next_obs;
     // Buffers for rewards, terminals, etc.
-    py::array_t<double> m_rewards;
+    py::array_t<float> m_rewards;
     py::array_t<bool> m_terminateds;
     py::array_t<bool> m_truncateds;
 
@@ -37,22 +37,22 @@ private:
 
 public:
     VectorizedCoopPush();
-    VectorizedCoopPush(std::vector<double> particle_positions,
-                       std::vector<double> boulder_positions,
-                       std::vector<double> landmark_positions,
+    VectorizedCoopPush(std::vector<float> particle_positions,
+                       std::vector<float> boulder_positions,
+                       std::vector<float> landmark_positions,
                        int n_physics_steps,
                        bool sparse_rewards,
                        bool visit_all,
-                       double sparse_weight,
-                       double dt,
-                       double boulder_weight,
+                       float sparse_weight,
+                       float dt,
+                       float boulder_weight,
                        int truncate_after_steps,
                        int n_threads,
                        int n_envs,
                        int envs_per_job);
     ~VectorizedCoopPush() {};
-    py::array_t<double> reset();
-    py::array_t<double> reset_i(int i);
+    py::array_t<float> reset();
+    py::array_t<float> reset_i(int i);
     inline int obs_size() { return m_env_obs_size; };
-    std::tuple<py::array_t<double>, py::array_t<double>, py::array_t<bool>, py::array_t<bool>> step(py::array_t<double> actions);
+    std::tuple<py::array_t<float>, py::array_t<float>, py::array_t<bool>, py::array_t<bool>> step(py::array_t<float> actions);
 };
